@@ -9,38 +9,93 @@ echo "╔═══════════════════════�
 echo "║   Claude AI Usage Widget — Installer     ║"
 echo "╚══════════════════════════════════════════╝"
 
-# ── Dependencies ────────────────────────────────────────────────────────────
+# ── Python — detect pyenv vs system ─────────────────────────────────────────
+
+echo ""
+echo "▸ Detecting Python environment…"
+
+PYTHON=""
+
+if command -v pyenv &>/dev/null; then
+    # Resolve pyenv's active python binary
+    PYTHON=$(pyenv which python3 2>/dev/null || pyenv which python 2>/dev/null || true)
+    if [ -z "$PYTHON" ]; then
+        echo "  ✗ pyenv found but no Python version is active."
+        echo "    Run: pyenv install 3.12 && pyenv global 3.12"
+        exit 1
+    fi
+    echo "  ✓ pyenv found — using $PYTHON"
+else
+    echo "  ✗ pyenv not found."
+    echo ""
+    echo "  pyenv is recommended for managing Python environments."
+    echo "  Install it with:  curl https://pyenv.run | bash"
+    echo "  Then reload your shell and run:  pyenv install 3.12 && pyenv global 3.12"
+    echo ""
+    read -rp "  Continue with system Python instead? [Y/n] " yn
+    case "${yn,,}" in
+        n|no) echo "  Aborted. Install pyenv then re-run."; exit 1 ;;
+        *) PYTHON=$(command -v python3) ;;
+    esac
+    echo "  Using system Python: $PYTHON"
+fi
+
+# ── Dependencies ─────────────────────────────────────────────────────────────
 
 echo ""
 echo "▸ Checking dependencies…"
 
-MISSING=()
+# System GI type libraries — always required via apt regardless of Python env.
+# These are runtime type data, not Python packages; pip cannot provide them.
+SYSTEM_MISSING=()
+for pkg in gir1.2-appindicator3-0.1 gir1.2-notify-0.7; do
+    dpkg -s "$pkg" &>/dev/null || SYSTEM_MISSING+=("$pkg")
+done
 
-# Python 3
-if ! command -v python3 &>/dev/null; then
-    MISSING+=("python3")
-fi
-
-# GIR packages
-python3 -c "import gi; gi.require_version('Gtk','3.0'); gi.require_version('AppIndicator3','0.1'); gi.require_version('Notify','0.7')" 2>/dev/null || {
-    MISSING+=("gir1.2-appindicator3-0.1" "gir1.2-notify-0.7")
-}
-
-if [ ${#MISSING[@]} -gt 0 ]; then
-    echo "  ✗ Missing packages: ${MISSING[*]}"
-    echo ""
-    echo "  Install them with:"
-    echo "    sudo apt install python3 gir1.2-appindicator3-0.1 gir1.2-notify-0.7 python3-gi"
-    echo ""
-    read -rp "  Install now? [Y/n] " yn
+if [ ${#SYSTEM_MISSING[@]} -gt 0 ]; then
+    echo "  ✗ Missing system GI libraries: ${SYSTEM_MISSING[*]}"
+    echo "    (These are needed even with pyenv — they are not pip-installable.)"
+    read -rp "  Install via apt now? [Y/n] " yn
     case "${yn,,}" in
         n|no) echo "  Aborted."; exit 1 ;;
         *)
-            sudo apt update
-            sudo apt install -y python3 python3-gi gir1.2-appindicator3-0.1 gir1.2-notify-0.7
+            sudo apt update -qq
+            sudo apt install -y "${SYSTEM_MISSING[@]}"
             ;;
     esac
 fi
+
+# Python packages: PyGObject + pycairo
+# With pyenv: install via pip. With system python: check python3-gi apt package.
+if command -v pyenv &>/dev/null; then
+    echo "  ▸ Installing Python packages via pip (pyenv)…"
+    # libgirepository1.0-dev is needed to build PyGObject from source
+    dpkg -s libgirepository1.0-dev &>/dev/null || {
+        echo "  ▸ Installing build deps for PyGObject…"
+        sudo apt install -y libgirepository1.0-dev libcairo2-dev pkg-config python3-dev
+    }
+    "$PYTHON" -m pip install --quiet --upgrade PyGObject pycairo
+    echo "  ✓ pip packages installed"
+else
+    # System python — use apt-managed python3-gi
+    if ! "$PYTHON" -c "import gi" 2>/dev/null; then
+        echo "  ✗ python3-gi not found"
+        read -rp "  Install via apt? [Y/n] " yn
+        case "${yn,,}" in
+            n|no) echo "  Aborted."; exit 1 ;;
+            *) sudo apt install -y python3-gi ;;
+        esac
+    fi
+fi
+
+# Final check
+"$PYTHON" -c "
+import gi
+gi.require_version('Gtk','3.0')
+gi.require_version('AppIndicator3','0.1')
+gi.require_version('Notify','0.7')
+from gi.repository import Gtk, AppIndicator3, Notify
+" || { echo "  ✗ GI import failed — check errors above"; exit 1; }
 
 echo "  ✓ All dependencies satisfied"
 
@@ -56,17 +111,18 @@ chmod +x "$INSTALL_DIR/claude_usage_widget.py"
 mkdir -p "$(dirname "$BIN_LINK")"
 ln -sf "$INSTALL_DIR/claude_usage_widget.py" "$BIN_LINK"
 
-# Create wrapper scripts for easy start/stop
-cat > "$HOME/.local/bin/claude-widget-start" <<'EOFSTART'
+# Create wrapper scripts — embed resolved Python path at install time
+cat > "$HOME/.local/bin/claude-widget-start" <<EOFSTART
 #!/bin/bash
 # Start Claude Usage Widget with clean environment
-env -i \
-  HOME="$HOME" \
-  DISPLAY="$DISPLAY" \
-  DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-  XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-  PATH="/usr/local/bin:/usr/bin:/bin" \
-  /usr/bin/python3 ~/.local/share/claude-usage-widget/claude_usage_widget.py > /tmp/claude-widget.log 2>&1 &
+# Python resolved at install time: $PYTHON
+env -i \\
+  HOME="\$HOME" \\
+  DISPLAY="\$DISPLAY" \\
+  DBUS_SESSION_BUS_ADDRESS="\$DBUS_SESSION_BUS_ADDRESS" \\
+  XDG_RUNTIME_DIR="\$XDG_RUNTIME_DIR" \\
+  PATH="/usr/local/bin:/usr/bin:/bin:\$HOME/.pyenv/shims:\$HOME/.pyenv/bin" \\
+  $PYTHON ~/.local/share/claude-usage-widget/claude_usage_widget.py > /tmp/claude-widget.log 2>&1 &
 
 sleep 1
 if ps aux | grep -q '[c]laude_usage_widget'; then
@@ -106,7 +162,7 @@ cat > "$AUTOSTART_DIR/$APP_ID.desktop" <<EOF
 Type=Application
 Name=Claude Usage Widget
 Comment=Shows Claude AI usage in system tray
-Exec=env -u LD_LIBRARY_PATH PATH="/usr/local/bin:/usr/bin:/bin" /usr/bin/python3 $INSTALL_DIR/claude_usage_widget.py
+Exec=env -u LD_LIBRARY_PATH PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.pyenv/shims:$HOME/.pyenv/bin" $PYTHON $INSTALL_DIR/claude_usage_widget.py
 Icon=network-transmit-receive
 Terminal=false
 Categories=Utility;
