@@ -307,37 +307,116 @@ class ConfigWindow(Gtk.Window):
     def _apply_css(self):
         css = Gtk.CssProvider()
         css.load_from_data(b"""
-            window { background-color: #1a1a2e; }
-            notebook { background-color: #1a1a2e; }
-            notebook header { background-color: #1a1a2e; }
-            notebook tab { color: #8888aa; padding: 4px 12px; }
-            notebook tab:checked { color: #e0e0ff; }
-            .cfg-section-header { color: #a0a0c0; font-size: 11px; font-weight: bold; letter-spacing: 1px; }
+            /* ── Base ── */
+            window, box, grid { background-color: #1a1a2e; }
+
+            /* ── Notebook tabs ── */
+            notebook > header {
+                background-color: #12122a;
+                border-bottom: 1px solid #2a2a4a;
+                padding: 0;
+            }
+            notebook > header > tabs > tab {
+                background-color: #12122a;
+                color: #6b7280;
+                padding: 6px 18px;
+                border: none;
+                box-shadow: none;
+                outline: none;
+            }
+            notebook > header > tabs > tab:hover {
+                background-color: #1e1e38;
+                color: #c0c0ff;
+            }
+            notebook > header > tabs > tab:checked {
+                background-color: #1a1a2e;
+                color: #e0e0ff;
+                font-weight: bold;
+                border-bottom: 2px solid #7070cc;
+            }
+            /* Page content area */
+            notebook > stack {
+                background-color: #1a1a2e;
+                border: none;
+            }
+
+            /* ── Fields ── */
+            .cfg-section-header { color: #7070aa; font-size: 10px; font-weight: bold; letter-spacing: 1px; }
             .cfg-col-header { color: #6b7280; font-size: 11px; font-weight: bold; }
             .cfg-field-label { color: #a0a0c0; font-size: 12px; }
-            .cfg-desc { color: #6b7280; font-size: 11px; }
+            .cfg-desc { color: #555577; font-size: 11px; }
+
+            /* ── Inputs ── */
             entry {
-                background-color: #2a2a4a; color: #e0e0ff;
-                border: 1px solid #3a3a5a; border-radius: 4px; padding: 4px 8px;
+                background-color: #20203a;
+                color: #e0e0ff;
+                border: 1px solid #3a3a5a;
+                border-radius: 4px;
+                padding: 4px 8px;
+                caret-color: #e0e0ff;
             }
-            entry:focus { border-color: #7070aa; }
-            spinbutton { background-color: #2a2a4a; color: #e0e0ff; border: 1px solid #3a3a5a; border-radius: 4px; }
-            checkbutton { color: #c0c0ff; }
-            .cfg-remove-btn { color: #ef4444; background: transparent; border: none; padding: 2px 6px; }
-            .cfg-remove-btn:hover { color: #ff6666; }
+            entry:focus { border-color: #7070cc; }
+
+            spinbutton entry { border: none; padding: 4px 6px; }
+            spinbutton {
+                background-color: #20203a;
+                color: #e0e0ff;
+                border: 1px solid #3a3a5a;
+                border-radius: 4px;
+            }
+            spinbutton button {
+                background-color: #2a2a4a;
+                color: #a0a0c0;
+                border: none;
+                border-left: 1px solid #3a3a5a;
+                border-radius: 0;
+                padding: 2px 6px;
+                min-width: 0;
+            }
+            spinbutton button:hover { background-color: #3a3a6a; color: #e0e0ff; }
+
+            checkbutton { color: #c0c0ff; background-color: transparent; }
+            checkbutton check {
+                background-color: #20203a;
+                border: 1px solid #3a3a5a;
+                border-radius: 3px;
+            }
+            checkbutton check:checked { background-color: #5050aa; border-color: #7070cc; }
+
+            /* ── Buttons ── */
+            button {
+                color: #8888aa;
+                background-color: transparent;
+                border: 1px solid #3a3a5a;
+                border-radius: 4px;
+                padding: 4px 12px;
+            }
+            button:hover { color: #e0e0ff; border-color: #6060aa; }
+
+            .cfg-remove-btn {
+                color: #ef4444; background: transparent;
+                border: none; padding: 2px 6px;
+            }
+            .cfg-remove-btn:hover { color: #ff7070; }
+
             .cfg-add-btn {
-                color: #8888aa; background: transparent;
+                color: #7070aa; background: transparent;
                 border: 1px solid #3a3a5a; border-radius: 4px; padding: 4px 12px;
             }
-            .cfg-add-btn:hover { color: #e0e0ff; border-color: #7070aa; }
+            .cfg-add-btn:hover { color: #c0c0ff; border-color: #6060aa; }
+
             .cfg-save-btn {
-                background-color: #3a3a6a; color: #e0e0ff;
-                border: none; border-radius: 4px; padding: 4px 16px;
+                background-color: #2e2e5e;
+                color: #c0c0ff;
+                border: 1px solid #5050aa;
+                border-radius: 4px;
+                padding: 4px 16px;
             }
-            .cfg-save-btn:hover { background-color: #5050aa; }
-            button { color: #8888aa; background: transparent; border: 1px solid #3a3a5a; border-radius: 4px; padding: 4px 12px; }
-            button:hover { color: #e0e0ff; }
-            .cfg-sep { background-color: #2a2a4a; }
+            .cfg-save-btn:hover { background-color: #4040aa; color: #e0e0ff; }
+
+            /* ── Misc ── */
+            separator, .cfg-sep { background-color: #2a2a4a; min-height: 1px; }
+            label { background-color: transparent; }
         """)
         Gtk.StyleContext.add_provider_for_screen(
             Gdk.Screen.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
