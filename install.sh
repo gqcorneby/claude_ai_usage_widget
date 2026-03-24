@@ -75,13 +75,31 @@ mkdir -p "$INSTALL_DIR"
 VENV_PYTHON="$VENV_DIR/bin/python3"
 
 if command -v pyenv &>/dev/null; then
-    # Build deps needed to compile PyGObject from source
-    dpkg -s libgirepository1.0-dev &>/dev/null || {
-        echo "  ▸ Installing build deps for PyGObject…"
-        sudo apt install -y libgirepository1.0-dev libcairo2-dev pkg-config python3-dev
-    }
-    echo "  ▸ Installing PyGObject + pycairo into venv…"
-    "$VENV_PYTHON" -m pip install --quiet --upgrade pip PyGObject pycairo
+    # Build deps needed to compile PyGObject from source.
+    # PyGObject ≥3.51 requires girepository-2.0 (libgirepository-2.0-dev),
+    # which is only available on Ubuntu 24.04+. On 22.04 we must use the
+    # 1.0 API and pin PyGObject to the last compatible release (<3.51).
+    BUILD_PKGS=(libcairo2-dev pkg-config python3-dev)
+    if apt-cache show libgirepository-2.0-dev &>/dev/null 2>&1; then
+        BUILD_PKGS+=(libgirepository-2.0-dev)
+        PYGOBJECT_VERSION=""          # latest works fine
+    else
+        BUILD_PKGS+=(libgirepository1.0-dev)
+        PYGOBJECT_VERSION="<3.51"     # last version supporting girepository-1.0
+    fi
+
+    MISSING_BUILD=()
+    for pkg in "${BUILD_PKGS[@]}"; do
+        dpkg -s "$pkg" &>/dev/null || MISSING_BUILD+=("$pkg")
+    done
+    if [ ${#MISSING_BUILD[@]} -gt 0 ]; then
+        echo "  ▸ Installing build deps: ${MISSING_BUILD[*]}"
+        sudo apt install -y "${MISSING_BUILD[@]}"
+    fi
+
+    echo "  ▸ Installing PyGObject${PYGOBJECT_VERSION:+ (pinned to ${PYGOBJECT_VERSION})} + pycairo into venv…"
+    "$VENV_PYTHON" -m pip install --quiet --upgrade pip
+    "$VENV_PYTHON" -m pip install --quiet "PyGObject${PYGOBJECT_VERSION}" pycairo
     echo "  ✓ pip packages installed into venv"
 else
     # System python — python3-gi is managed by apt and lives outside venv.
