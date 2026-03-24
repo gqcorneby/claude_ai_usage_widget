@@ -1,99 +1,100 @@
-# ⚡ Claude AI Usage Widget — Linux Taskbar
+# ⚡ Claude AI Usage Widget — Linux Taskbar (Multi-Account Fork)
 
-A lightweight system tray widget that shows your Claude AI subscription usage percentage (5-hour and 7-day rate limit windows) directly in your Linux taskbar.
+> **Fork of [StaticB1/claude_ai_usage_widget](https://github.com/StaticB1/claude_ai_usage_widget)**
+> The only change from the original is **multi-account support** — monitor multiple Claude accounts simultaneously from a single tray icon.
+
+A lightweight system tray widget that shows your Claude AI subscription usage (5h and 7d rate limit windows) directly in your Linux taskbar.
 
 ![Claude Usage Widget Screenshot](screenshot.png)
-<!-- Add a screenshot.png to the repository showing the widget in action -->
+
+## What's Different from the Original
+
+- **Multiple accounts** — tray label shows `Work:67% Personal:12%` for all accounts at a glance
+- **Per-account popup** — clicking opens a breakdown for each account with 5h + 7d bars and reset timers
+- **Config-driven accounts** — `~/.config/claude-usage-widget/config.json` lists each account's label and Claude Code config dir
+- **Graceful failures** — if one account's token fails it shows `Work:!` but the others keep working
+- **Interactive install** — `install.sh` now asks how many accounts you want and where their credentials are
+- **pyenv support** — installer detects pyenv and creates an isolated venv so the widget survives Python version switches
+- **5-minute poll** — bumped from 2 min to 5 min
+
+Everything else (API, icon, notifications, autostart) is unchanged from the original.
+
+---
 
 ## Quick Start
 
 ```bash
-# Install dependencies
-sudo apt install python3 python3-gi gir1.2-appindicator3-0.1 gir1.2-notify-0.7
-
-# Install widget
-git clone https://github.com/StaticB1/claude_ai_usage_widget.git && cd claude_ai_usage_widget
-chmod +x install.sh && ./install.sh
-
-# Start widget
+git clone https://github.com/gqcorneby/claude_ai_usage_widget.git
+cd claude_ai_usage_widget
+./install.sh
 claude-widget-start
 ```
 
-## Features
-
-- **Taskbar percentage** — shows your 5h usage % at a glance with color-coded icon
-- **Click for details** — popup with 5h + 7d utilization, progress bars, reset timers, and subscription plan
-- **Extra usage tracking** — displays pay-as-you-go monthly credit usage if enabled on your account
-- **Threshold notifications** — desktop alerts at startup, 75%, 90%, and 100% usage
-- **Auto-refresh** — polls every 2 minutes (configurable)
-- **Auto-detect credentials** — reads Claude Code's `~/.claude/.credentials.json` on Linux
-- **Manual token entry** — dialog for manual OAuth token if you don't use Claude Code
-- **Autostart** — installs a `.desktop` entry for autostart on login
+The installer will ask how many accounts to monitor and where each one's Claude Code config directory is.
 
 ## Requirements
 
 - Linux with GTK3 (GNOME, KDE, XFCE, etc.)
 - Python 3.10+
-- System packages:
-  ```
-  sudo apt install python3 python3-gi gir1.2-appindicator3-0.1 gir1.2-notify-0.7
-  ```
+- `gir1.2-appindicator3-0.1`, `gir1.2-notify-0.7` (installer handles these)
 
 ## Install
 
 ```bash
-git clone https://github.com/StaticB1/claude_ai_usage_widget.git && cd claude_ai_usage_widget
-chmod +x install.sh
 ./install.sh
 ```
 
-Then run:
-```bash
-claude-widget-start
-```
+The installer will:
+1. Detect pyenv or fall back to system Python
+2. Install system GI libraries via apt
+3. Create an isolated venv (survives pyenv version changes)
+4. Ask you to configure your accounts interactively
+5. Set up autostart on login
 
-It will autostart on next login.
+```
+▸ Setting up accounts…
+  How many accounts do you want to monitor? [1]: 2
+
+  — Account 1 of 2 —
+  Label [Account1]: Work
+  Claude config dir [~/.claude]: ~/.claude/work
+  ✓ Found credentials
+
+  — Account 2 of 2 —
+  Label [Account2]: Personal
+  Claude config dir [~/.claude]: ~/.claude
+  ✓ Found credentials
+```
 
 ## Usage
 
 ```bash
-claude-widget-start   # Start the widget
-claude-widget-stop    # Stop the widget
+claude-widget-start   # Start
+claude-widget-stop    # Stop
 ```
 
-The widget runs in the background and displays in your system tray.
+The tray label updates every 5 minutes. Click it for the full breakdown popup.
 
-**Check if running:**
-```bash
-ps aux | grep '[c]laude_usage_widget'
+## Configuration
+
+`~/.config/claude-usage-widget/config.json` — written by the installer, edit any time:
+
+```json
+{
+  "accounts": [
+    { "label": "Work",     "credentials_dir": "~/.claude/work" },
+    { "label": "Personal", "credentials_dir": "~/.claude" }
+  ],
+  "poll_interval_seconds": 300,
+  "thresholds": { "warn": 60, "critical": 85 }
+}
 ```
 
-## Getting Your OAuth Token
-
-### Option A: Claude Code (automatic)
-
-If you have [Claude Code](https://code.claude.com) installed and logged in:
-
-```bash
-claude login   # if not already
-```
-
-The widget auto-reads `~/.claude/.credentials.json` — no extra config needed.
-
-### Option B: Browser DevTools (manual)
-
-1. Open https://claude.ai and log in
-2. Open DevTools → **Network** tab
-3. Send a message, then filter requests for `api.anthropic.com`
-4. Find the `Authorization: Bearer sk-ant-oat01-...` header
-5. Copy the full token starting with `sk-ant-oat01-`
-6. Enter it via the widget's **Set Token…** menu item
-
-The token is saved to `~/.config/claude-usage-widget/config.json` (mode 600).
+Each `credentials_dir` must contain a `.credentials.json` file from Claude Code (`claude login`).
 
 ## How It Works
 
-Uses the same internal API endpoint Claude Code uses:
+Uses the same internal API endpoint as Claude Code's `/usage`:
 
 ```
 GET https://api.anthropic.com/api/oauth/usage
@@ -101,149 +102,35 @@ Authorization: Bearer <oauth-token>
 anthropic-beta: oauth-2025-04-20
 ```
 
-Returns:
-```json
-{
-  "five_hour":  { "utilization": 10.0, "resets_at": "2026-02-19T05:00:00Z" },
-  "seven_day":  { "utilization": 2.0,  "resets_at": "2026-02-24T08:00:00Z" },
-  "extra_usage": {
-    "is_enabled": true,
-    "monthly_limit": 2000,
-    "used_credits": 500.0,
-    "utilization": 25.0
-  }
-}
-```
-
-The widget handles all three sections. `extra_usage` is shown only when `is_enabled` is true.
-
-## Configuration
-
-Edit `~/.config/claude-usage-widget/config.json`:
-
-```json
-{
-  "oauth_token": "sk-ant-oat01-..."
-}
-```
-
-To change refresh interval, edit `REFRESH_INTERVAL_SEC` in the Python script (default: 120s).
-
-## Upgrade
-
-```bash
-cd claude_ai_usage_widget
-chmod +x upgrade.sh && ./upgrade.sh
-```
-
-This will pull the latest version, reinstall, and restart the widget automatically. Your OAuth token and config are preserved.
-
-**Manual upgrade** (if you prefer step by step):
-```bash
-cd claude_ai_usage_widget
-git pull
-claude-widget-stop
-./install.sh
-claude-widget-start
-```
+Credentials are read directly from Claude Code's credential files — no separate login required.
 
 ## Uninstall
 
 ```bash
-chmod +x uninstall.sh
 ./uninstall.sh
 ```
 
-This will remove:
-- Installation directory (`~/.local/share/claude-usage-widget/`)
-- Wrapper scripts (`claude-widget-start`, `claude-widget-stop`)
-- Symlink (`~/.local/bin/claude-usage-widget`)
-- Autostart entry (`~/.config/autostart/claude-usage-widget.desktop`)
-- Application entry (`~/.local/share/applications/claude-usage-widget.desktop`)
-
-You'll be prompted whether to keep or remove your config (OAuth token).
-
-## Development
-
-### Pre-Release Validation
-
-Before creating a release or pushing to the repository, run the validation script to check for common issues:
-
-```bash
-chmod +x validate.sh
-./validate.sh
-```
-
-The script performs these checks:
-- **Python syntax** — validates `claude_usage_widget.py` compiles
-- **Shell scripts** — validates `install.sh` and `uninstall.sh` syntax
-- **Token leaks** — scans for real OAuth tokens in repository (placeholders OK)
-- **File permissions** — verifies secure file modes
-- **Required files** — checks all distribution files exist
-- **TODO/FIXME** — finds unresolved comments
-- **README placeholders** — ensures no template placeholders remain
-- **Version tags** — validates git tag matches code version
-
-**Exit codes:**
-- `0` — All checks passed, ready for release
-- `1` — Errors found, fix before releasing
-
-This is especially useful for:
-- Pre-commit validation
-- CI/CD integration
-- Ensuring quality before releases
-- Catching common mistakes (token leaks, missing files, etc.)
+Removes all installed files, scripts, desktop entries, and temp files. Prompts before removing your account config.
 
 ## Troubleshooting
 
 | Problem | Fix |
 |---|---|
+| Account shows `!` | Check `/tmp/claude-widget.log`. Usually an expired token — re-run `claude login` |
 | No tray icon on GNOME 43+ | Install `gnome-shell-extension-appindicator` and enable it |
 | `AppIndicator3` import fails | `sudo apt install gir1.2-appindicator3-0.1` |
-| `ModuleNotFoundError: No module named 'gi'` | You're using pyenv/conda Python. Use `claude-widget-start` which uses system Python |
-| `symbol lookup error: libpthread.so.0` | Snap library conflict. Use `claude-widget-start` which sets clean environment |
-| `command not found` after install/uninstall | Run `hash -r` to clear bash's command cache, or close/reopen terminal |
-| Token expired / 401 | Re-run `claude login` (Claude Code) or re-extract from browser |
-| Icon shows "ERR" | Check token validity and network connectivity |
-
-### Python Environment Issues
-
-If you use **pyenv**, **conda**, or other Python version managers, the `python3-gi` system package may not be accessible. The installer creates wrapper scripts (`claude-widget-start`/`claude-widget-stop`) that automatically use the system Python (`/usr/bin/python3`) with a clean environment to avoid conflicts.
-
-### Checking Logs
-
-If the widget fails to start or behaves unexpectedly, check the log file:
+| Widget broke after pyenv switch | Re-run `./install.sh` — creates a new venv from current pyenv version |
+| `command not found` after install | Run `hash -r` or open a new terminal |
 
 ```bash
-cat /tmp/claude-widget.log
+cat /tmp/claude-widget.log   # Check logs
 ```
-
-Common issues in logs:
-- **Symbol lookup errors**: Snap library conflicts (use `claude-widget-start`)
-- **Module import errors**: Python environment issues (use `claude-widget-start`)
-- **HTTP 401/403 errors**: Token expired or invalid (refresh token)
-- **Network errors**: Check internet connectivity or API availability
-
-## Contributing & Contact
-
-Contributions are welcome!
-
-- **Bug reports / feature requests** — [Open an issue](https://github.com/StaticB1/claude_ai_usage_widget/issues)
-- **Discussions / collaboration** — [GitHub Discussions](https://github.com/StaticB1/claude_ai_usage_widget/discussions)
-- **Email** — contact@statotec.com
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
 ## License
 
-MIT
+MIT — see original repo for full history and credits.
 
-## Author
+## Credits
 
-Created by **Statotech Systems**
-
----
-
-Made with ⚡ by [Statotech Systems](https://github.com/StaticB1)
+Original widget by **[Statotech Systems](https://github.com/StaticB1)**.
+Multi-account fork by [gqcorneby](https://github.com/gqcorneby).
