@@ -6,28 +6,9 @@ Shows per-account usage breakdown with progress bars and reset timers.
 import gi
 gi.require_version('Gtk', '3.0')
 
-from datetime import datetime, timezone
 from gi.repository import Gtk, Gdk
 
-from shared import get_color_for_pct, parse_utilization, format_reset_time
-
-
-def _compute_burn_rate(seven: dict) -> float | None:
-    """Return 7d burn rate multiplier, or None if window is too new."""
-    resets_at_str = seven.get("resets_at")
-    if not resets_at_str:
-        return None
-    pct7, _ = parse_utilization(seven.get("utilization", 0))
-    try:
-        resets_at = datetime.fromisoformat(resets_at_str.replace("Z", "+00:00"))
-        now = datetime.now(timezone.utc)
-        window_secs = 7 * 24 * 3600
-        elapsed_secs = window_secs - (resets_at - now).total_seconds()
-        if elapsed_secs < 0.05 * window_secs:
-            return None
-        return (pct7 / 100) / (elapsed_secs / window_secs)
-    except Exception:
-        return None
+from shared import get_color_for_pct, parse_utilization, format_reset_time, compute_burn_rate
 
 
 class UsageDetailWindow(Gtk.Window):
@@ -208,7 +189,7 @@ class UsageDetailWindow(Gtk.Window):
 
             # Row 3: burn rate — only shown for 7d column
             if key == "seven_day":
-                burn_rate = _compute_burn_rate(bucket)
+                burn_rate = compute_burn_rate(bucket)
                 if burn_rate is not None:
                     arrow = "\u2191" if burn_rate >= 1.0 else "\u2193"
                     multiplier = burn_rate_cfg.get("multiplier", 1.5)

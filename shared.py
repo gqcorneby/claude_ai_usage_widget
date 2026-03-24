@@ -39,6 +39,24 @@ def parse_utilization(raw: float) -> tuple[int, float]:
     return int(raw * 100), raw
 
 
+def compute_burn_rate(seven: dict) -> float | None:
+    """Return the 7d burn rate multiplier, or None if the window is too new."""
+    resets_at_str = seven.get("resets_at")
+    if not resets_at_str:
+        return None
+    pct7, _ = parse_utilization(seven.get("utilization", 0))
+    try:
+        resets_at = datetime.fromisoformat(resets_at_str.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        window_secs = 7 * 24 * 3600
+        elapsed_secs = window_secs - (resets_at - now).total_seconds()
+        if elapsed_secs < 0.05 * window_secs:  # ignore first ~8h
+            return None
+        return (pct7 / 100) / (elapsed_secs / window_secs)
+    except Exception:
+        return None
+
+
 def format_reset_time(iso_str: str | None) -> str:
     if not iso_str:
         return "unknown"

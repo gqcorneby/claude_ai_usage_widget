@@ -96,7 +96,15 @@ The tray gives you the quick hourly glance; the dropdown shows weekly pace at a 
 | Burn rate — warn | 7d pace exceeds multiplier at warn % | Normal |
 | Burn rate — critical | 7d pace exceeds multiplier at critical % | Critical |
 
-Each level fires at most once per window. Burn rate notifications skip the first ~8 hours of a new window to avoid false alarms.
+#### Window reset behaviour
+
+Threshold and burn rate notifications each track the API's `resets_at` timestamp for their respective windows. When that timestamp shifts (i.e. the window rolled over), the escalation level resets to zero and the full warn → critical → 100% sequence can fire again.
+
+- **5h threshold**: resets when the 5h `resets_at` shifts by more than 1 hour
+- **7d threshold**: resets when the 7d `resets_at` shifts by more than 6 hours
+- **Burn rate**: resets when the 7d `resets_at` shifts by more than 6 hours; additionally skips the first ~8 hours of each new window to avoid false alarms on low-elapsed-time data
+
+State is persisted to `~/.config/claude-usage-widget/notification_state.json`, so restarting the widget mid-window will not re-fire notifications that already fired for the current window.
 
 ## Configuration
 

@@ -266,6 +266,18 @@ class ConfigWindow(Gtk.Window):
             dlg.destroy()
             return
 
+        labels = [a["label"] for a in accounts]
+        if len(labels) != len(set(labels)):
+            dlg = Gtk.MessageDialog(
+                transient_for=self, flags=0,
+                message_type=Gtk.MessageType.ERROR,
+                buttons=Gtk.ButtonsType.OK,
+                text="Account labels must be unique.",
+            )
+            dlg.run()
+            dlg.destroy()
+            return
+
         warn = int(self._warn_spin.get_value())
         crit = int(self._crit_spin.get_value())
         if warn >= crit:
