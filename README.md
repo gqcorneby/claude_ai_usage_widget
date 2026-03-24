@@ -1,23 +1,23 @@
 # ⚡ Claude AI Usage Widget — Linux Taskbar (Multi-Account Fork)
 
 > **Fork of [StaticB1/claude_ai_usage_widget](https://github.com/StaticB1/claude_ai_usage_widget)**
-> The only change from the original is **multi-account support** — monitor multiple Claude accounts simultaneously from a single tray icon.
 
-A lightweight system tray widget that shows your Claude AI subscription usage (5h and 7d rate limit windows) directly in your Linux taskbar.
+A lightweight system tray widget that shows your Claude AI subscription usage (5h and 7d rate limit windows) directly in your Linux taskbar. Supports multiple accounts and is configurable via a built-in UI.
 
 ![Claude Usage Widget Screenshot](screenshot.png)
 
 ## What's Different from the Original
 
 - **Multiple accounts** — tray label shows `Work:67% Personal:12%` for all accounts at a glance
-- **Per-account popup** — clicking opens a breakdown for each account with 5h + 7d bars and reset timers
+- **Redesigned popup** — two-column table layout showing 5h and 7d side-by-side with inline reset times (`72% — 2h 15m`)
+- **Configure window** — edit accounts, thresholds, burn rate alerts, and poll interval live from the tray menu (no config file editing needed)
+- **Burn rate alerts** — warns when your 7d usage pace suggests you'll exceed your weekly allocation (e.g. 50% used with only 25% of the week elapsed)
+- **Configurable notifications** — set your own warn/critical thresholds (defaults: 60% / 85%)
+- **Configurable poll interval** — change how often the widget checks (default: 5 min)
 - **Config-driven accounts** — `~/.config/claude-usage-widget/config.json` lists each account's label and Claude Code config dir
 - **Graceful failures** — if one account's token fails it shows `Work:!` but the others keep working
-- **Interactive install** — `install.sh` now asks how many accounts you want and where their credentials are
+- **Interactive install** — `install.sh` asks how many accounts you want and where their credentials are
 - **pyenv support** — installer detects pyenv and creates an isolated venv so the widget survives Python version switches
-- **5-minute poll** — bumped from 2 min to 5 min
-
-Everything else (API, icon, notifications, autostart) is unchanged from the original.
 
 ---
 
@@ -73,11 +73,18 @@ claude-widget-start   # Start
 claude-widget-stop    # Stop
 ```
 
-The tray label updates every 5 minutes. Click it for the full breakdown popup.
+The tray label updates every 5 minutes by default. Click for the full breakdown popup; right-click for the menu.
 
 ## Configuration
 
-`~/.config/claude-usage-widget/config.json` — written by the installer, edit any time:
+The easiest way is via the tray menu → **Configure...**:
+
+- **Accounts tab** — add, edit, or remove accounts (label + credentials directory)
+- **Notifications tab** — set the poll interval, warn/critical thresholds, and burn rate alert
+
+Changes take effect immediately without restarting the widget.
+
+The config is stored at `~/.config/claude-usage-widget/config.json` and can also be edited directly:
 
 ```json
 {
@@ -86,11 +93,16 @@ The tray label updates every 5 minutes. Click it for the full breakdown popup.
     { "label": "Personal", "credentials_dir": "~/.claude" }
   ],
   "poll_interval_seconds": 300,
-  "thresholds": { "warn": 60, "critical": 85 }
+  "thresholds": { "warn": 60, "critical": 85 },
+  "burn_rate": { "enabled": false, "multiplier": 1.5 }
 }
 ```
 
 Each `credentials_dir` must contain a `.credentials.json` file from Claude Code (`claude login`).
+
+### Burn Rate Alert
+
+When enabled, fires a notification if your 7-day usage rate suggests you'll exceed your weekly limit. The multiplier controls sensitivity — `1.5` means: warn if you're on pace to use 150% of your allocation. Triggers once per window cycle and ignores the first ~8 hours to avoid false alarms at window start.
 
 ## How It Works
 
