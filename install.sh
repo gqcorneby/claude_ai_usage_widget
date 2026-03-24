@@ -50,7 +50,7 @@ echo ""
 echo "▸ Installing to $INSTALL_DIR …"
 
 mkdir -p "$INSTALL_DIR"
-cp claude_usage_widget.py "$INSTALL_DIR/claude_usage_widget.py"
+cp claude_usage_widget.py shared.py usage_popup.py "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/claude_usage_widget.py"
 
 mkdir -p "$(dirname "$BIN_LINK")"
@@ -135,21 +135,23 @@ EOF
 
 echo "  ✓ Application entry created"
 
-# ── Check for existing token ────────────────────────────────────────────────
+# ── Check for existing credentials ─────────────────────────────────────────
 
 echo ""
-CRED_FILE="$HOME/.claude/.credentials.json"
-if [ -f "$CRED_FILE" ]; then
-    echo "  ✓ Found Claude Code credentials — token will be auto-detected"
-else
-    echo "  ⚠ No Claude Code credentials found at $CRED_FILE"
-    echo "    You'll be prompted to enter your OAuth token on first run."
-    echo ""
-    echo "    To get your token:"
-    echo "    Option A: Install Claude Code → 'claude login' → token saved automatically"
-    echo "    Option B: Browser DevTools → Network tab → filter 'api.anthropic.com'"
-    echo "              → copy the Authorization: Bearer sk-ant-oat01-... header value"
-fi
+echo "▸ Checking credentials…"
+for DIR in "$HOME/.claude/g" "$HOME/.claude/n"; do
+    CRED="$DIR/.credentials.json"
+    LABEL=$(basename "$DIR" | tr '[:lower:]' '[:upper:]')
+    if [ -f "$CRED" ]; then
+        echo "  ✓ Account $LABEL: found credentials at $CRED"
+    else
+        echo "  ⚠ Account $LABEL: no credentials at $CRED"
+        echo "    Run 'claude login' with that config dir to set up."
+    fi
+done
+echo ""
+echo "  Config: ~/.config/claude-usage-widget/config.json"
+echo "  Edit it to change account paths, poll interval, or thresholds."
 
 # ── Done ────────────────────────────────────────────────────────────────────
 
