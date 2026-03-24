@@ -379,7 +379,8 @@ class ClaudeUsageApp:
             "token": None, "usage_data": None,
             "subscription_info": None, "error": None,
             "last_notification_threshold": 0,
-            "last_burn_rate_resets_at": None,  # tracks window already warned for
+            "last_burn_rate_resets_at": None,   # resets_at value of the current window
+            "last_burn_rate_threshold": 0,      # highest usage % level already notified (0/warn/critical)
         }
 
     def on_configure(self, _widget):
@@ -400,7 +401,14 @@ class ClaudeUsageApp:
         self.force_refresh()
 
     def _check_burn_rate(self, label: str, usage: dict, state: dict):
-        """Fire a notification when the 7d burn rate exceeds the configured multiplier."""
+        """Notify when 7d burn rate exceeds the multiplier.
+
+        Escalation levels mirror the usage thresholds:
+          0  → fires once early in the window (before warn threshold)
+          warn % → fires again if burn rate still high at warn level
+          critical % → fires again if burn rate still high at critical level
+        Each level fires at most once per window cycle.
+        """
         if not self.burn_rate_cfg.get("enabled"):
             return
         if not self.startup_notification_sent:
@@ -415,10 +423,6 @@ class ClaudeUsageApp:
         if pct7 <= 0:
             return
 
-        # Only warn once per window cycle
-        if state.get("last_burn_rate_resets_at") == resets_at_str:
-            return
-
         try:
             from datetime import timezone
             resets_at = datetime.fromisoformat(resets_at_str.replace("Z", "+00:00"))
@@ -428,7 +432,7 @@ class ClaudeUsageApp:
             if elapsed_secs <= 0:
                 return
             elapsed_frac = elapsed_secs / window_secs
-            # Skip the first ~8 hours of a window to avoid spurious alerts
+            # Skip the first ~8 hours of a window to avoid spurious alerts at window start
             if elapsed_frac < 0.05:
                 return
 
@@ -438,16 +442,37 @@ class ClaudeUsageApp:
             if burn_rate < multiplier:
                 return
 
+            # Reset escalation tracker when the window rolls over
+            if state.get("last_burn_rate_resets_at") != resets_at_str:
+                state["last_burn_rate_resets_at"] = resets_at_str
+                state["last_burn_rate_threshold"] = 0
+
+            # Determine which escalation level we're at (mirrors usage thresholds)
+            warn = self.thresholds.get("warn", 60)
+            crit = self.thresholds.get("critical", 85)
+            if pct7 >= crit:
+                current_level = crit
+            elif pct7 >= warn:
+                current_level = warn
+            else:
+                current_level = 1  # early warning — below warn threshold
+
+            prev_level = state.get("last_burn_rate_threshold", 0)
+            if current_level <= prev_level:
+                return
+
             projected = int(burn_rate * 100)
             elapsed_pct = int(elapsed_frac * 100)
+            urgency = Notify.Urgency.CRITICAL if pct7 >= crit else Notify.Urgency.NORMAL
+            icon = "dialog-warning" if pct7 >= crit else "dialog-information"
             n = Notify.Notification.new(
                 f"{label}: High burn rate",
                 f"7d usage at {pct7}% with {elapsed_pct}% of week elapsed — on pace for {projected}%",
-                "dialog-warning",
+                icon,
             )
-            n.set_urgency(Notify.Urgency.NORMAL)
+            n.set_urgency(urgency)
             n.show()
-            state["last_burn_rate_resets_at"] = resets_at_str
+            state["last_burn_rate_threshold"] = current_level
         except Exception as e:
             print(f"[claude-usage] burn rate check error: {e}", file=sys.stderr)
 

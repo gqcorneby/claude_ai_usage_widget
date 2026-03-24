@@ -102,7 +102,17 @@ Each `credentials_dir` must contain a `.credentials.json` file from Claude Code 
 
 ### Burn Rate Alert
 
-When enabled, fires a notification if your 7-day usage rate suggests you'll exceed your weekly limit. The multiplier controls sensitivity — `1.5` means: warn if you're on pace to use 150% of your allocation. Triggers once per window cycle and ignores the first ~8 hours to avoid false alarms at window start.
+When enabled, fires a notification if your 7-day usage rate suggests you'll exceed your weekly limit. The multiplier controls sensitivity — `1.5` means: warn if you're on pace to use 150% of your allocation.
+
+Notifications escalate up to 3 times per window, mirroring the usage thresholds:
+
+| When | Condition |
+|---|---|
+| Early in the week (below warn %) | First alert — catches it before it's serious |
+| At warn % (default 60%) | Second alert if burn rate is still high |
+| At critical % (default 85%) | Final alert — critical urgency |
+
+Each level fires at most once. The first ~8 hours of a new window are ignored to avoid false alarms, and all levels reset when the window rolls over.
 
 ## How It Works
 
