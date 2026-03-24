@@ -49,8 +49,7 @@ CONFIG_DIR = Path.home() / ".config" / APP_ID
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 DEFAULT_ACCOUNTS = [
-    {"label": "G", "credentials_dir": "~/.claude/g"},
-    {"label": "N", "credentials_dir": "~/.claude/n"},
+    {"label": "Claude", "credentials_dir": "~/.claude"},
 ]
 DEFAULT_POLL_INTERVAL = 300  # 5 minutes
 

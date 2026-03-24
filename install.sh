@@ -219,23 +219,69 @@ EOF
 
 echo "  ✓ Application entry created"
 
-# ── Check for existing credentials ─────────────────────────────────────────
+# ── Account setup ────────────────────────────────────────────────────────────
 
 echo ""
-echo "▸ Checking credentials…"
-for DIR in "$HOME/.claude/g" "$HOME/.claude/n"; do
-    CRED="$DIR/.credentials.json"
-    LABEL=$(basename "$DIR" | tr '[:lower:]' '[:upper:]')
-    if [ -f "$CRED" ]; then
-        echo "  ✓ Account $LABEL: found credentials at $CRED"
-    else
-        echo "  ⚠ Account $LABEL: no credentials at $CRED"
-        echo "    Run 'claude login' with that config dir to set up."
-    fi
-done
+echo "▸ Setting up accounts…"
+echo "  Each account reads OAuth credentials from a Claude Code config directory."
+echo "  The default is ~/.claude (standard single-account Claude Code install)."
 echo ""
-echo "  Config: ~/.config/claude-usage-widget/config.json"
-echo "  Edit it to change account paths, poll interval, or thresholds."
+
+CONFIG_OUT="$HOME/.config/$APP_ID/config.json"
+mkdir -p "$(dirname "$CONFIG_OUT")"
+
+# Ask how many accounts
+while true; do
+    read -rp "  How many accounts do you want to monitor? [1]: " NUM_ACCOUNTS
+    NUM_ACCOUNTS="${NUM_ACCOUNTS:-1}"
+    if [[ "$NUM_ACCOUNTS" =~ ^[1-9][0-9]*$ ]]; then
+        break
+    fi
+    echo "  Please enter a positive number."
+done
+
+ACCOUNTS_JSON="["
+for i in $(seq 1 "$NUM_ACCOUNTS"); do
+    echo ""
+    echo "  — Account $i of $NUM_ACCOUNTS —"
+
+    # Label
+    DEFAULT_LABEL="Claude"
+    [ "$NUM_ACCOUNTS" -gt 1 ] && DEFAULT_LABEL="Account$i"
+    read -rp "  Label [$DEFAULT_LABEL]: " LABEL
+    LABEL="${LABEL:-$DEFAULT_LABEL}"
+
+    # Credentials dir
+    DEFAULT_DIR="~/.claude"
+    read -rp "  Claude config dir [$DEFAULT_DIR]: " CRED_DIR
+    CRED_DIR="${CRED_DIR:-$DEFAULT_DIR}"
+
+    # Expand ~ and check for credentials file
+    CRED_PATH="${CRED_DIR/#\~/$HOME}/.credentials.json"
+    if [ -f "$CRED_PATH" ]; then
+        echo "  ✓ Found credentials at $CRED_PATH"
+    else
+        echo "  ⚠ No credentials at $CRED_PATH"
+        echo "    Make sure Claude Code is installed and you've run 'claude login'."
+    fi
+
+    [ "$i" -gt 1 ] && ACCOUNTS_JSON+=","
+    ACCOUNTS_JSON+="{\"label\":\"$LABEL\",\"credentials_dir\":\"$CRED_DIR\"}"
+done
+ACCOUNTS_JSON+="]"
+
+# Write config
+cat > "$CONFIG_OUT" <<EOF
+{
+  "accounts": $ACCOUNTS_JSON,
+  "poll_interval_seconds": 300,
+  "thresholds": { "warn": 60, "critical": 85 }
+}
+EOF
+chmod 600 "$CONFIG_OUT"
+echo ""
+echo "  ✓ Config written to $CONFIG_OUT"
+echo "  Edit it any time to change accounts, poll interval, or thresholds."
 
 # ── Done ────────────────────────────────────────────────────────────────────
 
