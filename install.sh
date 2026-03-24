@@ -65,19 +65,27 @@ if [ ${#SYSTEM_MISSING[@]} -gt 0 ]; then
     esac
 fi
 
-# Python packages: PyGObject + pycairo
-# With pyenv: install via pip. With system python: check python3-gi apt package.
+# Python packages — always use a dedicated venv with --copies.
+# --copies physically copies the Python binary into the venv, so the widget
+# keeps working even if pyenv switches versions or removes the source version.
+VENV_DIR="$INSTALL_DIR/venv"
+echo "  ▸ Creating isolated venv at $VENV_DIR …"
+mkdir -p "$INSTALL_DIR"
+"$PYTHON" -m venv --copies "$VENV_DIR"
+VENV_PYTHON="$VENV_DIR/bin/python3"
+
 if command -v pyenv &>/dev/null; then
-    echo "  ▸ Installing Python packages via pip (pyenv)…"
-    # libgirepository1.0-dev is needed to build PyGObject from source
+    # Build deps needed to compile PyGObject from source
     dpkg -s libgirepository1.0-dev &>/dev/null || {
         echo "  ▸ Installing build deps for PyGObject…"
         sudo apt install -y libgirepository1.0-dev libcairo2-dev pkg-config python3-dev
     }
-    "$PYTHON" -m pip install --quiet --upgrade PyGObject pycairo
-    echo "  ✓ pip packages installed"
+    echo "  ▸ Installing PyGObject + pycairo into venv…"
+    "$VENV_PYTHON" -m pip install --quiet --upgrade pip PyGObject pycairo
+    echo "  ✓ pip packages installed into venv"
 else
-    # System python — use apt-managed python3-gi
+    # System python — python3-gi is managed by apt and lives outside venv.
+    # Add a .pth file to the venv so it can see system site-packages for gi.
     if ! "$PYTHON" -c "import gi" 2>/dev/null; then
         echo "  ✗ python3-gi not found"
         read -rp "  Install via apt? [Y/n] " yn
@@ -86,16 +94,20 @@ else
             *) sudo apt install -y python3-gi ;;
         esac
     fi
+    # Allow venv to see system gi package (apt-installed)
+    SITE_PKG=$("$VENV_PYTHON" -c "import site; print(site.getsitepackages()[0])")
+    SYS_SITE=$("$PYTHON" -c "import site; print(site.getsitepackages()[0])")
+    echo "$SYS_SITE" > "$SITE_PKG/system-gi.pth"
 fi
 
-# Final check
-"$PYTHON" -c "
+# Final check inside the venv
+"$VENV_PYTHON" -c "
 import gi
 gi.require_version('Gtk','3.0')
 gi.require_version('AppIndicator3','0.1')
 gi.require_version('Notify','0.7')
 from gi.repository import Gtk, AppIndicator3, Notify
-" || { echo "  ✗ GI import failed — check errors above"; exit 1; }
+" || { echo "  ✗ GI import failed inside venv — check errors above"; exit 1; }
 
 echo "  ✓ All dependencies satisfied"
 
@@ -104,25 +116,23 @@ echo "  ✓ All dependencies satisfied"
 echo ""
 echo "▸ Installing to $INSTALL_DIR …"
 
-mkdir -p "$INSTALL_DIR"
 cp claude_usage_widget.py shared.py usage_popup.py "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/claude_usage_widget.py"
 
 mkdir -p "$(dirname "$BIN_LINK")"
 ln -sf "$INSTALL_DIR/claude_usage_widget.py" "$BIN_LINK"
 
-# Create wrapper scripts — embed resolved Python path at install time
+# Wrapper scripts use the venv Python — fully independent of pyenv version changes
 cat > "$HOME/.local/bin/claude-widget-start" <<EOFSTART
 #!/bin/bash
-# Start Claude Usage Widget with clean environment
-# Python resolved at install time: $PYTHON
+# Start Claude Usage Widget — uses dedicated venv (pyenv-version-independent)
 env -i \\
   HOME="\$HOME" \\
   DISPLAY="\$DISPLAY" \\
   DBUS_SESSION_BUS_ADDRESS="\$DBUS_SESSION_BUS_ADDRESS" \\
   XDG_RUNTIME_DIR="\$XDG_RUNTIME_DIR" \\
-  PATH="/usr/local/bin:/usr/bin:/bin:\$HOME/.pyenv/shims:\$HOME/.pyenv/bin" \\
-  $PYTHON ~/.local/share/claude-usage-widget/claude_usage_widget.py > /tmp/claude-widget.log 2>&1 &
+  PATH="/usr/local/bin:/usr/bin:/bin" \\
+  $VENV_PYTHON $INSTALL_DIR/claude_usage_widget.py > /tmp/claude-widget.log 2>&1 &
 
 sleep 1
 if ps aux | grep -q '[c]laude_usage_widget'; then
@@ -162,7 +172,7 @@ cat > "$AUTOSTART_DIR/$APP_ID.desktop" <<EOF
 Type=Application
 Name=Claude Usage Widget
 Comment=Shows Claude AI usage in system tray
-Exec=env -u LD_LIBRARY_PATH PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.pyenv/shims:$HOME/.pyenv/bin" $PYTHON $INSTALL_DIR/claude_usage_widget.py
+Exec=env -u LD_LIBRARY_PATH PATH="/usr/local/bin:/usr/bin:/bin" $VENV_PYTHON $INSTALL_DIR/claude_usage_widget.py
 Icon=network-transmit-receive
 Terminal=false
 Categories=Utility;
