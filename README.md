@@ -75,6 +75,29 @@ claude-widget-stop    # Stop
 
 The tray label updates every 5 minutes by default. Click for the full breakdown popup; right-click for the menu.
 
+## What's Displayed Where
+
+| Location | Shows |
+|---|---|
+| **Tray label** | 5h usage % per account — `Work:67% Personal:12%` |
+| **Dropdown menu** | 7d usage %, burn rate, 5h reset time — `Work: 45% ↑1.8× ↺ 1h 20m` |
+| **Details popup (5h column)** | Progress bar, 5h % and reset time |
+| **Details popup (7d column)** | Progress bar, 7d % and reset time, burn rate pace (`↑1.8×` / `↓0.3×`) |
+
+The tray gives you the quick hourly glance; the dropdown shows weekly pace at a glance; the popup has the full picture.
+
+### Notifications
+
+| Type | Triggers | Urgency |
+|---|---|---|
+| Usage threshold — warn | 5h or 7d hits warn % (default 60%) | Normal |
+| Usage threshold — critical | 5h or 7d hits critical % (default 85%) | Critical |
+| Burn rate — early | 7d pace exceeds multiplier before warn % | Normal |
+| Burn rate — warn | 7d pace exceeds multiplier at warn % | Normal |
+| Burn rate — critical | 7d pace exceeds multiplier at critical % | Critical |
+
+Each level fires at most once per window. Burn rate notifications skip the first ~8 hours of a new window to avoid false alarms.
+
 ## Configuration
 
 The easiest way is via the tray menu → **Configure...**:

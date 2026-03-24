@@ -312,7 +312,13 @@ class ClaudeUsageApp:
                 max_pct = max(max_pct, pct5, pct7)
 
                 r5 = format_reset_time(five.get("resets_at"))
-                self.menu_items[lbl].set_label(f"{lbl}: 5h {pct5}% | 7d {pct7}% (resets {r5})")
+                burn_rate = self._compute_burn_rate(seven)
+                if burn_rate is not None:
+                    arrow = "\u2191" if burn_rate >= 1.0 else "\u2193"
+                    br_str = f"  {arrow}{burn_rate:.1f}\u00d7  \u21ba {r5}"
+                else:
+                    br_str = f"  \u21ba {r5}"
+                self.menu_items[lbl].set_label(f"{lbl}: {pct7}%{br_str}")
             else:
                 label_parts.append(f"{lbl}:!")
                 self.menu_items[lbl].set_label(f"{lbl}: {state.get('error', 'error')}")
@@ -373,6 +379,25 @@ class ClaudeUsageApp:
         state["last_notification_threshold"] = current
 
     @staticmethod
+    def _compute_burn_rate(seven: dict) -> float | None:
+        """Return the 7d burn rate multiplier, or None if the window is too new to compute."""
+        from datetime import timezone
+        resets_at_str = seven.get("resets_at")
+        if not resets_at_str:
+            return None
+        pct7, _ = parse_utilization(seven.get("utilization", 0))
+        try:
+            resets_at = datetime.fromisoformat(resets_at_str.replace("Z", "+00:00"))
+            now = datetime.now(timezone.utc)
+            window_secs = 7 * 24 * 3600
+            elapsed_secs = window_secs - (resets_at - now).total_seconds()
+            if elapsed_secs < 0.05 * window_secs:  # ignore first ~8h
+                return None
+            return (pct7 / 100) / (elapsed_secs / window_secs)
+        except Exception:
+            return None
+
+    @staticmethod
     def _blank_state(credentials_dir: str) -> dict:
         return {
             "credentials_dir": credentials_dir,
@@ -424,20 +449,10 @@ class ClaudeUsageApp:
             return
 
         try:
-            from datetime import timezone
-            resets_at = datetime.fromisoformat(resets_at_str.replace("Z", "+00:00"))
-            now = datetime.now(timezone.utc)
-            window_secs = 7 * 24 * 3600
-            elapsed_secs = window_secs - (resets_at - now).total_seconds()
-            if elapsed_secs <= 0:
-                return
-            elapsed_frac = elapsed_secs / window_secs
-            # Skip the first ~8 hours of a window to avoid spurious alerts at window start
-            if elapsed_frac < 0.05:
+            burn_rate = self._compute_burn_rate(seven)
+            if burn_rate is None:
                 return
 
-            # Reason: burn_rate > 1.0 means consuming faster than the window allows
-            burn_rate = (pct7 / 100) / elapsed_frac
             multiplier = self.burn_rate_cfg.get("multiplier", 1.5)
             if burn_rate < multiplier:
                 return
@@ -462,12 +477,11 @@ class ClaudeUsageApp:
                 return
 
             projected = int(burn_rate * 100)
-            elapsed_pct = int(elapsed_frac * 100)
             urgency = Notify.Urgency.CRITICAL if pct7 >= crit else Notify.Urgency.NORMAL
             icon = "dialog-warning" if pct7 >= crit else "dialog-information"
             n = Notify.Notification.new(
                 f"{label}: High burn rate",
-                f"7d usage at {pct7}% with {elapsed_pct}% of week elapsed — on pace for {projected}%",
+                f"7d usage at {pct7}% — on pace for {projected}%",
                 icon,
             )
             n.set_urgency(urgency)
@@ -488,7 +502,7 @@ class ClaudeUsageApp:
                 "subscription_info": state.get("subscription_info"),
             })
         UsageDetailWindow(accts_data, self.last_updated, self.thresholds,
-                          __version__, self.force_refresh)
+                          self.burn_rate_cfg, __version__, self.force_refresh)
 
     def on_quit(self, _widget):
         self.running = False
