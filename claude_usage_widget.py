@@ -185,16 +185,12 @@ class ClaudeUsageApp:
         self.accounts = self.config.get("accounts", DEFAULT_ACCOUNTS)
         self.poll_interval = self.config.get("poll_interval_seconds", DEFAULT_POLL_INTERVAL)
         self.thresholds = self.config.get("thresholds", DEFAULT_THRESHOLDS)
+        self.burn_rate_cfg = self.config.get("burn_rate", {"enabled": False, "multiplier": 1.5})
 
         # Per-account state
         self.account_states: dict[str, dict] = {}
         for acct in self.accounts:
-            self.account_states[acct["label"]] = {
-                "credentials_dir": acct["credentials_dir"],
-                "token": None, "usage_data": None,
-                "subscription_info": None, "error": None,
-                "last_notification_threshold": 0,
-            }
+            self.account_states[acct["label"]] = self._blank_state(acct["credentials_dir"])
 
         self.last_updated = "never"
         self.running = True
@@ -345,6 +341,7 @@ class ClaudeUsageApp:
             pct5, _ = parse_utilization(five.get("utilization", 0))
             pct7, _ = parse_utilization(seven.get("utilization", 0))
             self._check_threshold(lbl, max(pct5, pct7), state)
+            self._check_burn_rate(lbl, usage, state)
 
         return False  # GLib.idle_add one-shot
 
@@ -375,23 +372,84 @@ class ClaudeUsageApp:
         n.show()
         state["last_notification_threshold"] = current
 
-    def on_configure(self, _widget):
-        ConfigWindow(self.accounts, self._reload_accounts)
+    @staticmethod
+    def _blank_state(credentials_dir: str) -> dict:
+        return {
+            "credentials_dir": credentials_dir,
+            "token": None, "usage_data": None,
+            "subscription_info": None, "error": None,
+            "last_notification_threshold": 0,
+            "last_burn_rate_resets_at": None,  # tracks window already warned for
+        }
 
-    def _reload_accounts(self, new_accounts: list[dict]):
-        """Rebuild account state from updated config and refresh."""
-        self.accounts = new_accounts
+    def on_configure(self, _widget):
+        ConfigWindow(self.accounts, self.thresholds, self.burn_rate_cfg,
+                     self.poll_interval, self._on_config_saved)
+
+    def _on_config_saved(self, new_config: dict):
+        """Rebuild live state from saved config and refresh."""
+        self.accounts = new_config["accounts"]
+        self.thresholds = new_config["thresholds"]
+        self.burn_rate_cfg = new_config["burn_rate"]
+        self.poll_interval = new_config["poll_interval_seconds"]
         self.account_states = {
-            acct["label"]: {
-                "credentials_dir": acct["credentials_dir"],
-                "token": None, "usage_data": None,
-                "subscription_info": None, "error": None,
-                "last_notification_threshold": 0,
-            }
-            for acct in new_accounts
+            acct["label"]: self._blank_state(acct["credentials_dir"])
+            for acct in self.accounts
         }
         self._build_menu()
         self.force_refresh()
+
+    def _check_burn_rate(self, label: str, usage: dict, state: dict):
+        """Fire a notification when the 7d burn rate exceeds the configured multiplier."""
+        if not self.burn_rate_cfg.get("enabled"):
+            return
+        if not self.startup_notification_sent:
+            return
+
+        seven = usage.get("seven_day") or {}
+        resets_at_str = seven.get("resets_at")
+        if not resets_at_str:
+            return
+
+        pct7, _ = parse_utilization(seven.get("utilization", 0))
+        if pct7 <= 0:
+            return
+
+        # Only warn once per window cycle
+        if state.get("last_burn_rate_resets_at") == resets_at_str:
+            return
+
+        try:
+            from datetime import timezone
+            resets_at = datetime.fromisoformat(resets_at_str.replace("Z", "+00:00"))
+            now = datetime.now(timezone.utc)
+            window_secs = 7 * 24 * 3600
+            elapsed_secs = window_secs - (resets_at - now).total_seconds()
+            if elapsed_secs <= 0:
+                return
+            elapsed_frac = elapsed_secs / window_secs
+            # Skip the first ~8 hours of a window to avoid spurious alerts
+            if elapsed_frac < 0.05:
+                return
+
+            # Reason: burn_rate > 1.0 means consuming faster than the window allows
+            burn_rate = (pct7 / 100) / elapsed_frac
+            multiplier = self.burn_rate_cfg.get("multiplier", 1.5)
+            if burn_rate < multiplier:
+                return
+
+            projected = int(burn_rate * 100)
+            elapsed_pct = int(elapsed_frac * 100)
+            n = Notify.Notification.new(
+                f"{label}: High burn rate",
+                f"7d usage at {pct7}% with {elapsed_pct}% of week elapsed — on pace for {projected}%",
+                "dialog-warning",
+            )
+            n.set_urgency(Notify.Urgency.NORMAL)
+            n.show()
+            state["last_burn_rate_resets_at"] = resets_at_str
+        except Exception as e:
+            print(f"[claude-usage] burn rate check error: {e}", file=sys.stderr)
 
     def on_show_details(self, _widget):
         accts_data = []
