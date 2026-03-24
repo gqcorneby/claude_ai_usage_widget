@@ -38,6 +38,7 @@ from shared import (
     parse_utilization, format_reset_time,
 )
 from usage_popup import UsageDetailWindow
+from config_window import ConfigWindow
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
@@ -237,6 +238,10 @@ class ClaudeUsageApp:
         item_refresh.connect("activate", lambda _: self.force_refresh())
         self.menu.append(item_refresh)
 
+        item_configure = Gtk.MenuItem(label="Configure...")
+        item_configure.connect("activate", self.on_configure)
+        self.menu.append(item_configure)
+
         self.menu.append(Gtk.SeparatorMenuItem())
 
         item_quit = Gtk.MenuItem(label="Quit")
@@ -369,6 +374,24 @@ class ClaudeUsageApp:
         n.set_urgency(urgency)
         n.show()
         state["last_notification_threshold"] = current
+
+    def on_configure(self, _widget):
+        ConfigWindow(self.accounts, self._reload_accounts)
+
+    def _reload_accounts(self, new_accounts: list[dict]):
+        """Rebuild account state from updated config and refresh."""
+        self.accounts = new_accounts
+        self.account_states = {
+            acct["label"]: {
+                "credentials_dir": acct["credentials_dir"],
+                "token": None, "usage_data": None,
+                "subscription_info": None, "error": None,
+                "last_notification_threshold": 0,
+            }
+            for acct in new_accounts
+        }
+        self._build_menu()
+        self.force_refresh()
 
     def on_show_details(self, _widget):
         accts_data = []

@@ -80,6 +80,7 @@ class UsageDetailWindow(Gtk.Window):
             .title-label { color: #e0e0ff; font-size: 16px; font-weight: bold; }
             .account-label { color: #c0c0ff; font-size: 14px; font-weight: bold; }
             .section-label { color: #a0a0c0; font-size: 11px; font-weight: bold; letter-spacing: 2px; }
+            .col-header { color: #a0a0c0; font-size: 12px; font-weight: bold; letter-spacing: 1px; border-bottom: 1px solid #2a2a4a; }
             .metric-sub { color: #8888aa; font-size: 11px; }
             .reset-label { color: #6b7280; font-size: 11px; }
             .status-ok { color: #22c55e; font-size: 11px; }
@@ -132,25 +133,34 @@ class UsageDetailWindow(Gtk.Window):
                 vbox.pack_start(err_lbl, False, False, 2)
             return
 
-        for key, window_label in [("five_hour", "5-HOUR"), ("seven_day", "7-DAY")]:
-            bucket = usage.get(key)
-            if not bucket:
-                continue
+        # Two-column table layout: one column per usage window
+        grid = Gtk.Grid()
+        grid.set_column_spacing(24)
+        grid.set_row_spacing(4)
+        grid.set_column_homogeneous(True)
 
-            section = Gtk.Label(label=window_label)
-            section.get_style_context().add_class("section-label")
-            section.set_halign(Gtk.Align.START)
-            vbox.pack_start(section, False, False, 2)
+        windows = [("five_hour", "5h"), ("seven_day", "7d")]
+        for col, (key, window_label) in enumerate(windows):
+            bucket = usage.get(key)
+
+            # Row 0: column header
+            hdr = Gtk.Label(label=window_label)
+            hdr.get_style_context().add_class("col-header")
+            hdr.set_halign(Gtk.Align.CENTER)
+            grid.attach(hdr, col, 0, 1, 1)
+
+            if not bucket:
+                placeholder = Gtk.Label(label="—")
+                placeholder.get_style_context().add_class("reset-label")
+                placeholder.set_halign(Gtk.Align.CENTER)
+                grid.attach(placeholder, col, 1, 1, 1)
+                continue
 
             pct, decimal = parse_utilization(bucket.get("utilization", 0))
             color = get_color_for_pct(pct, thresholds)
+            reset_str = format_reset_time(bucket.get("resets_at"))
 
-            val = Gtk.Label()
-            val.set_markup(f'<span foreground="{color}" font_weight="bold" font="24">{pct}%</span>')
-            val.set_halign(Gtk.Align.START)
-            vbox.pack_start(val, False, False, 0)
-
-            # Progress bar
+            # Row 1: progress bar
             bar = Gtk.LevelBar()
             bar.set_min_value(0)
             bar.set_max_value(1.0)
@@ -165,10 +175,15 @@ class UsageDetailWindow(Gtk.Window):
                 levelbar trough block.filled {{ background-color: {color}; border-radius: 4px; min-height: 8px; }}
             """.encode())
             bar.get_style_context().add_provider(bar_css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-            vbox.pack_start(bar, False, False, 0)
+            grid.attach(bar, col, 1, 1, 1)
 
-            reset_str = format_reset_time(bucket.get("resets_at"))
-            reset_lbl = Gtk.Label(label=f"Resets in {reset_str}")
-            reset_lbl.get_style_context().add_class("reset-label")
-            reset_lbl.set_halign(Gtk.Align.START)
-            vbox.pack_start(reset_lbl, False, False, 0)
+            # Row 2: "72% — 2h 15m" inline
+            val = Gtk.Label()
+            val.set_markup(
+                f'<span foreground="{color}" font_weight="bold" font="20">{pct}%</span>'
+                f'<span foreground="#6b7280" font="11"> — {reset_str}</span>'
+            )
+            val.set_halign(Gtk.Align.CENTER)
+            grid.attach(val, col, 2, 1, 1)
+
+        vbox.pack_start(grid, False, False, 4)
