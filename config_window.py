@@ -307,10 +307,10 @@ class ConfigWindow(Gtk.Window):
     def _apply_css(self):
         css = Gtk.CssProvider()
         css.load_from_data(b"""
-            /* ── Base ── */
+            /* Base */
             window, box, grid { background-color: #1a1a2e; }
 
-            /* ── Notebook tabs ── */
+            /* Notebook tabs */
             notebook > header {
                 background-color: #12122a;
                 border-bottom: 1px solid #2a2a4a;
@@ -340,13 +340,13 @@ class ConfigWindow(Gtk.Window):
                 border: none;
             }
 
-            /* ── Fields ── */
+            /* Fields */
             .cfg-section-header { color: #7070aa; font-size: 10px; font-weight: bold; letter-spacing: 1px; }
             .cfg-col-header { color: #6b7280; font-size: 11px; font-weight: bold; }
             .cfg-field-label { color: #a0a0c0; font-size: 12px; }
             .cfg-desc { color: #555577; font-size: 11px; }
 
-            /* ── Inputs ── */
+            /* Inputs */
             entry {
                 background-color: #20203a;
                 color: #e0e0ff;
@@ -383,7 +383,7 @@ class ConfigWindow(Gtk.Window):
             }
             checkbutton check:checked { background-color: #5050aa; border-color: #7070cc; }
 
-            /* ── Buttons ── */
+            /* Buttons */
             button {
                 color: #8888aa;
                 background-color: transparent;
@@ -414,7 +414,7 @@ class ConfigWindow(Gtk.Window):
             }
             .cfg-save-btn:hover { background-color: #4040aa; color: #e0e0ff; }
 
-            /* ── Misc ── */
+            /* Misc */
             separator, .cfg-sep { background-color: #2a2a4a; min-height: 1px; }
             label { background-color: transparent; }
         """)
