@@ -97,6 +97,46 @@ def write_icon(pct: float, error: bool = False) -> str:
     return str(icon_path)
 
 
+def write_loading_icon(frame: int) -> str:
+    """Generate a spinner icon for the given frame (0–7), rotating a 3/4 arc."""
+    PI2 = 2 * 3.14159
+    size = 32
+
+    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, size, size)
+    ctx = cairo.Context(surface)
+    ctx.set_operator(cairo.OPERATOR_CLEAR)
+    ctx.paint()
+    ctx.set_operator(cairo.OPERATOR_OVER)
+
+    # Dim background circle
+    ctx.set_source_rgba(0.5, 0.5, 0.5, 0.2)
+    ctx.arc(size/2, size/2, 13, 0, PI2)
+    ctx.fill()
+
+    # Rotating 3/4 arc — start angle advances by 45° per frame
+    angle_start = (frame / 8) * PI2 - (PI2 / 4)  # offset so 0 starts at top
+    angle_end = angle_start + PI2 * 0.75
+    ctx.set_source_rgba(0.55, 0.55, 0.55, 0.9)
+    ctx.set_line_width(2.5)
+    ctx.arc(size/2, size/2, 13, angle_start, angle_end)
+    ctx.stroke()
+
+    # Gray "C" to keep it recognisable while loading
+    ctx.set_source_rgba(0.5, 0.5, 0.5, 0.7)
+    ctx.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+    ctx.set_font_size(22)
+    text = "C"
+    x_bearing, y_bearing, width, height, *_ = ctx.text_extents(text)
+    ctx.move_to(size/2 - width/2 - x_bearing, size/2 - height/2 - y_bearing)
+    ctx.show_text(text)
+
+    icon_dir = Path("/tmp") / APP_ID
+    icon_dir.mkdir(exist_ok=True)
+    icon_path = icon_dir / f"icon_loading_{frame}.png"
+    surface.write_to_png(str(icon_path))
+    return str(icon_path)
+
+
 # ── Config loading ──────────────────────────────────────────────────────────
 
 def load_config() -> dict:
@@ -244,6 +284,8 @@ class ClaudeUsageApp:
         self.last_updated = "never"
         self.running = True
         self.startup_notification_sent = False
+        self._loading = False
+        self._loading_frame = 0
 
         Notify.init(APP_NAME)
 
@@ -334,6 +376,7 @@ class ClaudeUsageApp:
             return {"error": str(e), "usage_data": None, "token": state.get("token")}
 
     def force_refresh(self):
+        GLib.idle_add(self._start_loading_animation)
         def _do():
             results = {}
             for label, state in self.account_states.items():
@@ -341,8 +384,25 @@ class ClaudeUsageApp:
             GLib.idle_add(self._update_ui, results)
         threading.Thread(target=_do, daemon=True).start()
 
+    def _start_loading_animation(self):
+        """Begin spinner animation (must run on GTK thread via idle_add)."""
+        self._loading = True
+        self._loading_frame = 0
+        GLib.timeout_add(120, self._tick_loading_icon)
+        return False  # one-shot
+
+    def _tick_loading_icon(self):
+        """Advance spinner one frame; stops automatically when _loading is cleared."""
+        if not self._loading:
+            return False
+        self._loading_frame = (self._loading_frame + 1) % 8
+        icon_path = write_loading_icon(self._loading_frame)
+        self.indicator.set_icon_full(icon_path, "Refreshing...")
+        return True  # keep going
+
     def _update_ui(self, results: dict):
         """Update indicator label + icon from fetched data (GTK thread)."""
+        self._loading = False  # stop spinner; _tick_loading_icon will not reschedule
         self.last_updated = datetime.now().strftime("%H:%M:%S")
 
         for label, result in results.items():

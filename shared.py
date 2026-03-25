@@ -34,7 +34,7 @@ def hex_to_rgb(hex_color: str) -> tuple:
 
 def parse_utilization(raw: float) -> tuple[int, float]:
     """Return (percentage_int, decimal_0_to_1) from API utilization value."""
-    if raw > 1:  # Already a percentage
+    if raw >= 1:  # Already a percentage (API returns 0-100 scale; 1.0 means 1%)
         return int(raw), raw / 100
     return int(raw * 100), raw
 
