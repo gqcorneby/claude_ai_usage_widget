@@ -15,7 +15,7 @@ A lightweight system tray widget that shows your Claude AI subscription usage (5
 - **Configurable notifications** — set your own warn/critical thresholds (defaults: 60% / 85%)
 - **Configurable poll interval** — change how often the widget checks (default: 5 min)
 - **Config-driven accounts** — `~/.config/claude-usage-widget/config.json` lists each account's label and Claude Code config dir
-- **Graceful failures** — if one account's token fails it shows `Work:!` but the others keep working
+- **Graceful failures** — if one account errors it shows `Work:!`; if a period just rolled over and the API hasn't returned fresh data yet it shows `Work:?`; in between resets the last known value is preserved instead of flashing an error
 - **Interactive install** — `install.sh` asks how many accounts you want and where their credentials are
 - **pyenv support** — installer detects pyenv and creates an isolated venv so the widget survives Python version switches
 
@@ -79,7 +79,7 @@ The tray label updates every 5 minutes by default. Click for the full breakdown 
 
 | Location | Shows |
 |---|---|
-| **Tray label** | 5h usage % per account — `Work:67% Personal:12%` |
+| **Tray label** | 5h usage % per account — `Work:67% Personal:12%`; `?` if the period just reset and fresh data hasn't arrived yet; `!` on auth/network error |
 | **Dropdown menu** | 7d usage %, burn rate, 5h reset time — `Work: 45% ↑1.8× ↺ 1h 20m` |
 | **Details popup (5h column)** | Progress bar, 5h % and reset time |
 | **Details popup (7d column)** | Progress bar, 7d % and reset time, burn rate pace (`↑1.8×` / `↓0.3×`) |
@@ -170,6 +170,7 @@ Removes all installed files, scripts, desktop entries, and temp files. Prompts b
 | Problem | Fix |
 |---|---|
 | Account shows `!` | Check `/tmp/claude-widget.log`. Usually an expired token — re-run `claude login` |
+| Account shows `?` | The usage window just rolled over and the API hasn't returned data for the new period yet — it will clear on the next successful poll |
 | No tray icon on GNOME 43+ | Install `gnome-shell-extension-appindicator` and enable it |
 | `AppIndicator3` import fails | `sudo apt install gir1.2-appindicator3-0.1` |
 | Widget broke after pyenv switch | Re-run `./install.sh` — creates a new venv from current pyenv version |

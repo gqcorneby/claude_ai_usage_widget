@@ -30,7 +30,7 @@ import urllib.error
 import ssl
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from shared import (
@@ -200,6 +200,22 @@ def fetch_usage(token: str) -> dict | None:
         return None
 
 
+def _is_usage_stale(usage: dict) -> bool:
+    """Return True if any usage window's resets_at has passed, meaning the period rolled over."""
+    now = datetime.now(timezone.utc)
+    for key in ("five_hour", "seven_day"):
+        window = usage.get(key) or {}
+        resets_at_str = window.get("resets_at")
+        if resets_at_str:
+            try:
+                resets_at = datetime.fromisoformat(resets_at_str.replace("Z", "+00:00"))
+                if now >= resets_at:
+                    return True
+            except Exception:
+                pass
+    return False
+
+
 # ── Main App ────────────────────────────────────────────────────────────────
 
 class ClaudeUsageApp:
@@ -321,6 +337,18 @@ class ClaudeUsageApp:
         self.last_updated = datetime.now().strftime("%H:%M:%S")
 
         for label, result in results.items():
+            if result.get("usage_data"):
+                result["pending_reset"] = False
+            else:
+                cached = self.account_states[label].get("usage_data")
+                if cached and _is_usage_stale(cached):
+                    # Window(s) have reset — cached data is misleading, clear it and wait for fresh data
+                    result = {k: v for k, v in result.items() if k != "usage_data"}
+                    result["pending_reset"] = True
+                elif cached:
+                    # Still within the window, preserve last known values
+                    result = {k: v for k, v in result.items() if k != "usage_data"}
+                # else: no cached data at all — leave as-is (will show !)
             self.account_states[label].update(result)
 
         # Build tray label: "G:67% N:12%"
@@ -351,8 +379,11 @@ class ClaudeUsageApp:
                     br_str = f"  \u21ba {r5}"
                 self.menu_items[lbl].set_label(f"{lbl}: {pct7}%{br_str}")
             else:
-                label_parts.append(f"{lbl}:!")
-                self.menu_items[lbl].set_label(f"{lbl}: {state.get('error', 'error')}")
+                label_parts.append(f"{lbl}:?" if state.get("pending_reset") else f"{lbl}:!")
+                if state.get("pending_reset"):
+                    self.menu_items[lbl].set_label(f"{lbl}: waiting for new period data...")
+                else:
+                    self.menu_items[lbl].set_label(f"{lbl}: {state.get('error', 'error')}")
 
         tray_text = " ".join(label_parts)
         self.indicator.set_label(tray_text, "")
@@ -447,7 +478,7 @@ class ClaudeUsageApp:
     def _blank_state(credentials_dir: str) -> dict:
         return {
             "credentials_dir": credentials_dir,
-            "token": None, "usage_data": None,
+            "token": None, "usage_data": None, "pending_reset": False,
             "subscription_info": None, "error": None,
             "last_notification_threshold": 0,       # highest level already notified this window
             "last_threshold_five_resets_at": None,  # 5h window resets_at seen last poll
