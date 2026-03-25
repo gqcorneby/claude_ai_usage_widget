@@ -13,6 +13,7 @@ A lightweight system tray widget that shows your Claude AI subscription usage (5
 - **Configure window** — edit accounts, thresholds, burn rate alerts, and poll interval live from the tray menu (no config file editing needed)
 - **Burn rate alerts** — warns when your 7d usage pace suggests you'll exceed your weekly allocation (e.g. 50% used with only 25% of the week elapsed)
 - **Configurable notifications** — set your own warn/critical thresholds (defaults: 60% / 85%)
+- **Auto-refresh toggle** — disable background polling if you prefer to check manually; the widget still fetches once on launch
 - **Configurable poll interval** — change how often the widget checks (default: 5 min)
 - **Config-driven accounts** — `~/.config/claude-usage-widget/config.json` lists each account's label and Claude Code config dir
 - **Graceful failures** — if one account errors it shows `Work:!`; if a period just rolled over and the API hasn't returned fresh data yet it shows `Work:?`; in between resets the last known value is preserved instead of flashing an error
@@ -111,7 +112,7 @@ State is persisted to `~/.config/claude-usage-widget/notification_state.json`, s
 The easiest way is via the tray menu → **Configure...**:
 
 - **Accounts tab** — add, edit, or remove accounts (label + credentials directory)
-- **Notifications tab** — set the poll interval, warn/critical thresholds, and burn rate alert
+- **Notifications tab** — toggle auto-refresh, set the poll interval, warn/critical thresholds, and burn rate alert
 
 Changes take effect immediately without restarting the widget.
 
@@ -123,6 +124,7 @@ The config is stored at `~/.config/claude-usage-widget/config.json` and can also
     { "label": "Work",     "credentials_dir": "~/.claude/work" },
     { "label": "Personal", "credentials_dir": "~/.claude" }
   ],
+  "auto_poll": true,
   "poll_interval_seconds": 300,
   "thresholds": { "warn": 60, "critical": 85 },
   "burn_rate": { "enabled": false, "multiplier": 1.5 }

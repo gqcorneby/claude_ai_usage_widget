@@ -109,6 +109,7 @@ def load_config() -> dict:
 
     config = {
         "accounts": DEFAULT_ACCOUNTS,
+        "auto_poll": True,
         "poll_interval_seconds": DEFAULT_POLL_INTERVAL,
         "thresholds": DEFAULT_THRESHOLDS,
         "burn_rate": {"enabled": False, "multiplier": 1.5},
@@ -222,6 +223,7 @@ class ClaudeUsageApp:
     def __init__(self):
         self.config = load_config()
         self.accounts = self.config.get("accounts", DEFAULT_ACCOUNTS)
+        self.auto_poll = self.config.get("auto_poll", True)
         self.poll_interval = self.config.get("poll_interval_seconds", DEFAULT_POLL_INTERVAL)
         self.thresholds = self.config.get("thresholds", DEFAULT_THRESHOLDS)
         self.burn_rate_cfg = self.config.get("burn_rate", {"enabled": False, "multiplier": 1.5})
@@ -296,12 +298,19 @@ class ClaudeUsageApp:
 
     def _poll_loop(self):
         """Background thread: fetch usage for all accounts periodically."""
+        # Reason: always do one initial fetch so the widget isn't blank on launch
+        self._do_poll()
         while self.running:
-            results = {}
-            for label, state in self.account_states.items():
-                results[label] = self._fetch_account(label, state)
-            GLib.idle_add(self._update_ui, results)
             time.sleep(self.poll_interval)
+            if self.auto_poll:
+                self._do_poll()
+
+    def _do_poll(self):
+        """Fetch usage for all accounts and schedule UI update."""
+        results = {}
+        for label, state in self.account_states.items():
+            results[label] = self._fetch_account(label, state)
+        GLib.idle_add(self._update_ui, results)
 
     def _fetch_account(self, label: str, state: dict) -> dict:
         """Fetch usage for a single account. Returns update dict."""
@@ -508,11 +517,12 @@ class ClaudeUsageApp:
 
     def on_configure(self, _widget):
         ConfigWindow(self.accounts, self.thresholds, self.burn_rate_cfg,
-                     self.poll_interval, self._on_config_saved)
+                     self.poll_interval, self.auto_poll, self._on_config_saved)
 
     def _on_config_saved(self, new_config: dict):
         """Rebuild live state from saved config and refresh."""
         self.accounts = new_config["accounts"]
+        self.auto_poll = new_config.get("auto_poll", True)
         self.thresholds = new_config["thresholds"]
         self.burn_rate_cfg = new_config["burn_rate"]
         self.poll_interval = new_config["poll_interval_seconds"]
