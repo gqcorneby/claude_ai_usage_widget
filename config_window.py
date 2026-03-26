@@ -24,8 +24,7 @@ class ConfigWindow(Gtk.Window):
     """Dialog for editing accounts and notification settings."""
 
     def __init__(self, current_accounts: list[dict], thresholds: dict,
-                 burn_rate_cfg: dict, poll_interval_secs: int,
-                 auto_poll: bool, on_save):
+                 burn_rate_cfg: dict, poll_interval_secs: int, on_save):
         super().__init__(title="Configure")
         self.set_default_size(480, -1)
         self.set_resizable(False)
@@ -33,7 +32,7 @@ class ConfigWindow(Gtk.Window):
         self.set_type_hint(Gdk.WindowTypeHint.DIALOG)
         self.set_keep_above(True)
         self._on_save_cb = on_save
-        self._rows: list[tuple[Gtk.Entry, Gtk.Entry, Gtk.CheckButton]] = []
+        self._rows: list[tuple[Gtk.Entry, Gtk.Entry, Gtk.CheckButton, Gtk.CheckButton]] = []
 
         self._apply_css()
 
@@ -48,8 +47,7 @@ class ConfigWindow(Gtk.Window):
             Gtk.Label(label="Accounts"),
         )
         notebook.append_page(
-            self._build_notifications_tab(thresholds, burn_rate_cfg,
-                                          poll_interval_secs, auto_poll),
+            self._build_notifications_tab(thresholds, burn_rate_cfg, poll_interval_secs),
             Gtk.Label(label="Notifications"),
         )
         outer.pack_start(notebook, True, True, 0)
@@ -87,7 +85,8 @@ class ConfigWindow(Gtk.Window):
 
         # Column headers
         hdr_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        for text, expand in [("Label", False), ("Credentials Directory", True), ("Hide tray", False)]:
+        for text, expand in [("Label", False), ("Credentials Directory", True),
+                              ("Hide tray", False), ("No poll", False)]:
             h = Gtk.Label(label=text)
             h.get_style_context().add_class("cfg-col-header")
             h.set_halign(Gtk.Align.START)
@@ -99,20 +98,19 @@ class ConfigWindow(Gtk.Window):
 
         for acct in current_accounts:
             self._add_row(acct.get("label", ""), acct.get("credentials_dir", ""),
-                          acct.get("hide_from_tray", False))
+                          acct.get("hide_from_tray", False), acct.get("disable_polling", False))
 
         add_btn = Gtk.Button(label="+ Add Account")
         add_btn.get_style_context().add_class("cfg-add-btn")
         add_btn.set_halign(Gtk.Align.START)
-        add_btn.connect("clicked", lambda _: self._add_row("", "~/.claude", False))
+        add_btn.connect("clicked", lambda _: self._add_row("", "~/.claude", False, False))
         box.pack_start(add_btn, False, False, 4)
 
         return box
 
     def _build_notifications_tab(self, thresholds: dict,
                                   burn_rate_cfg: dict,
-                                  poll_interval_secs: int,
-                                  auto_poll: bool) -> Gtk.Widget:
+                                  poll_interval_secs: int) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
         box.set_margin_top(16)
         box.set_margin_bottom(8)
@@ -125,10 +123,6 @@ class ConfigWindow(Gtk.Window):
         poll_lbl.set_halign(Gtk.Align.START)
         box.pack_start(poll_lbl, False, False, 0)
 
-        self._auto_poll_check = Gtk.CheckButton(label="Auto-refresh in background")
-        self._auto_poll_check.set_active(auto_poll)
-        box.pack_start(self._auto_poll_check, False, False, 0)
-
         poll_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         poll_field_lbl = Gtk.Label(label="Check every")
         poll_field_lbl.get_style_context().add_class("cfg-field-label")
@@ -139,13 +133,6 @@ class ConfigWindow(Gtk.Window):
         poll_row.pack_start(poll_field_lbl, False, False, 0)
         poll_row.pack_start(self._poll_spin, False, False, 0)
         poll_row.pack_start(poll_suffix, False, False, 0)
-
-        # Dim the interval row when auto-poll is disabled
-        def on_auto_poll_toggle(btn):
-            poll_row.set_sensitive(btn.get_active())
-
-        self._auto_poll_check.connect("toggled", on_auto_poll_toggle)
-        poll_row.set_sensitive(self._auto_poll_check.get_active())
         box.pack_start(poll_row, False, False, 0)
 
         box.pack_start(Gtk.Separator(), False, False, 0)
@@ -229,7 +216,8 @@ class ConfigWindow(Gtk.Window):
 
     # ── Account row helpers ───────────────────────────────────────────────────
 
-    def _add_row(self, label: str, cred_dir: str, hide_from_tray: bool = False):
+    def _add_row(self, label: str, cred_dir: str,
+                hide_from_tray: bool = False, disable_polling: bool = False):
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
 
         label_entry = Gtk.Entry()
@@ -246,6 +234,10 @@ class ConfigWindow(Gtk.Window):
         hide_check.set_active(hide_from_tray)
         hide_check.set_tooltip_text("Hide this account from the tray label")
 
+        disable_check = Gtk.CheckButton()
+        disable_check.set_active(disable_polling)
+        disable_check.set_tooltip_text("Disable background auto-refresh for this account")
+
         remove_btn = Gtk.Button(label="✕")
         remove_btn.get_style_context().add_class("cfg-remove-btn")
         remove_btn.set_relief(Gtk.ReliefStyle.NONE)
@@ -253,16 +245,17 @@ class ConfigWindow(Gtk.Window):
         row.pack_start(label_entry, False, False, 0)
         row.pack_start(dir_entry, True, True, 0)
         row.pack_start(hide_check, False, False, 0)
+        row.pack_start(disable_check, False, False, 0)
         row.pack_start(remove_btn, False, False, 0)
 
-        entry_triple = (label_entry, dir_entry, hide_check)
-        self._rows.append(entry_triple)
+        entry_quad = (label_entry, dir_entry, hide_check, disable_check)
+        self._rows.append(entry_quad)
         self._rows_box.pack_start(row, False, False, 0)
         row.show_all()
 
-        def on_remove(_btn, r=row, et=entry_triple):
+        def on_remove(_btn, r=row, eq=entry_quad):
             self._rows_box.remove(r)
-            self._rows.remove(et)
+            self._rows.remove(eq)
 
         remove_btn.connect("clicked", on_remove)
 
@@ -274,8 +267,9 @@ class ConfigWindow(Gtk.Window):
                 "label": le.get_text().strip(),
                 "credentials_dir": de.get_text().strip(),
                 "hide_from_tray": hc.get_active(),
+                "disable_polling": dc.get_active(),
             }
-            for le, de, hc in self._rows
+            for le, de, hc, dc in self._rows
             if le.get_text().strip() and de.get_text().strip()
         ]
 
@@ -317,7 +311,6 @@ class ConfigWindow(Gtk.Window):
 
         new_config = {
             "accounts": accounts,
-            "auto_poll": self._auto_poll_check.get_active(),
             "poll_interval_seconds": int(self._poll_spin.get_value()) * 60,
             "thresholds": {"warn": warn, "critical": crit},
             "burn_rate": {
