@@ -35,7 +35,7 @@ from pathlib import Path
 
 from shared import (
     COLOR_GRAY, DEFAULT_THRESHOLDS, get_color_for_pct, hex_to_rgb,
-    parse_utilization, format_reset_time, compute_burn_rate,
+    parse_utilization, format_reset_time, format_reset_clock, compute_burn_rate,
 )
 from usage_popup import UsageDetailWindow
 from config_window import ConfigWindow
@@ -439,7 +439,7 @@ class ClaudeUsageApp:
                 label_parts.append(f"{lbl}:{pct5}%")
                 max_pct = max(max_pct, pct5, pct7)
 
-                r5 = format_reset_time(five.get("resets_at"))
+                r5 = format_reset_time(five.get("resets_at")) if self.auto_poll else format_reset_clock(five.get("resets_at"))
                 burn_rate = compute_burn_rate(seven)
                 if burn_rate is not None:
                     arrow = "\u2191" if burn_rate >= 1.0 else "\u2193"
@@ -679,7 +679,7 @@ class ClaudeUsageApp:
                 "subscription_info": state.get("subscription_info"),
             })
         UsageDetailWindow(accts_data, self.last_updated, self.thresholds,
-                          self.burn_rate_cfg, __version__, self.force_refresh)
+                          self.burn_rate_cfg, __version__, self.force_refresh, self.auto_poll)
 
     def on_quit(self, _widget):
         self.running = False

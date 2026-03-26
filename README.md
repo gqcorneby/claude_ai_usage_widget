@@ -13,7 +13,7 @@ A lightweight system tray widget that shows your Claude AI subscription usage (5
 - **Configure window** — edit accounts, thresholds, burn rate alerts, and poll interval live from the tray menu (no config file editing needed)
 - **Burn rate alerts** — warns when your 7d usage pace suggests you'll exceed your weekly allocation (e.g. 50% used with only 25% of the week elapsed)
 - **Configurable notifications** — set your own warn/critical thresholds (defaults: 60% / 85%)
-- **Auto-refresh toggle** — disable background polling if you prefer to check manually; the widget still fetches once on launch
+- **Auto-refresh toggle** — disable background polling if you prefer to check manually; the widget still fetches once on launch. When polling is off, reset times switch from a countdown (`2h 15m`) to the actual reset time (`9:00P` for 5h, `Th 7:00P` for 7d)
 - **Configurable poll interval** — change how often the widget checks (default: 5 min)
 - **Config-driven accounts** — `~/.config/claude-usage-widget/config.json` lists each account's label and Claude Code config dir
 - **Graceful failures** — if one account errors it shows `Work:!`; if a period just rolled over and the API hasn't returned fresh data yet it shows `Work:?`; in between resets the last known value is preserved instead of flashing an error
@@ -81,9 +81,9 @@ The tray label updates every 5 minutes by default. Click for the full breakdown 
 | Location | Shows |
 |---|---|
 | **Tray label** | 5h usage % per account — `Work:67% Personal:12%`; `?` if the period just reset and fresh data hasn't arrived yet; `!` on auth/network error |
-| **Dropdown menu** | 7d usage %, burn rate, 5h reset time — `Work: 45% ↑1.8× ↺ 1h 20m` |
-| **Details popup (5h column)** | Progress bar, 5h % and reset time |
-| **Details popup (7d column)** | Progress bar, 7d % and reset time, burn rate pace (`↑1.8×` / `↓0.3×`) |
+| **Dropdown menu** | 7d usage %, burn rate, 5h reset time — `Work: 45% ↑1.8× ↺ 1h 20m` (or `↺ 9:00P` when auto-poll is off) |
+| **Details popup (5h column)** | Progress bar, 5h % and reset time (`2h 15m` or `9:00P`) |
+| **Details popup (7d column)** | Progress bar, 7d % and reset time (`3d 4h` or `Th 7:00P`), burn rate pace (`↑1.8×` / `↓0.3×`) |
 
 The tray gives you the quick hourly glance; the dropdown shows weekly pace at a glance; the popup has the full picture.
 

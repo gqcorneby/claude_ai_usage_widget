@@ -57,6 +57,30 @@ def compute_burn_rate(seven: dict) -> float | None:
         return None
 
 
+def format_reset_clock(iso_str: str | None) -> str:
+    """Format reset time as a clock time, e.g. '9:00P'. Used when auto-poll is off."""
+    if not iso_str:
+        return "unknown"
+    try:
+        reset_dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00")).astimezone()
+        return reset_dt.strftime("%-I:%M") + ("A" if reset_dt.hour < 12 else "P")
+    except Exception:
+        return "unknown"
+
+
+def format_reset_clock_7d(iso_str: str | None) -> str:
+    """Format reset time as day + clock, e.g. 'Th 7:00P'. Used for 7d window when auto-poll is off."""
+    if not iso_str:
+        return "unknown"
+    try:
+        reset_dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00")).astimezone()
+        day = reset_dt.strftime("%a")[:2]  # "Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"
+        time_str = reset_dt.strftime("%-I:%M") + ("A" if reset_dt.hour < 12 else "P")
+        return f"{day} {time_str}"
+    except Exception:
+        return "unknown"
+
+
 def format_reset_time(iso_str: str | None) -> str:
     if not iso_str:
         return "unknown"

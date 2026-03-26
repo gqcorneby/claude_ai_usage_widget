@@ -8,14 +8,15 @@ gi.require_version('Gtk', '3.0')
 
 from gi.repository import Gtk, Gdk
 
-from shared import get_color_for_pct, parse_utilization, format_reset_time, compute_burn_rate
+from shared import get_color_for_pct, parse_utilization, format_reset_time, format_reset_clock, format_reset_clock_7d, compute_burn_rate
 
 
 class UsageDetailWindow(Gtk.Window):
     """Popup window showing detailed usage info for all accounts."""
 
     def __init__(self, accounts_data: list[dict], last_updated: str,
-                 thresholds: dict, burn_rate_cfg: dict, version: str, on_refresh):
+                 thresholds: dict, burn_rate_cfg: dict, version: str, on_refresh,
+                 auto_poll: bool = True):
         super().__init__(title="Claude AI Usage")
         self.set_default_size(400, -1)
         self.set_resizable(False)
@@ -38,6 +39,8 @@ class UsageDetailWindow(Gtk.Window):
         title.get_style_context().add_class("title-label")
         title.set_halign(Gtk.Align.START)
         vbox.pack_start(title, False, False, 0)
+
+        self._auto_poll = auto_poll
 
         # Render each account
         for acct in accounts_data:
@@ -159,7 +162,13 @@ class UsageDetailWindow(Gtk.Window):
 
             pct, decimal = parse_utilization(bucket.get("utilization", 0))
             color = get_color_for_pct(pct, thresholds)
-            reset_str = format_reset_time(bucket.get("resets_at"))
+            resets_at = bucket.get("resets_at")
+            if self._auto_poll:
+                reset_str = format_reset_time(resets_at)
+            elif key == "seven_day":
+                reset_str = format_reset_clock_7d(resets_at)
+            else:
+                reset_str = format_reset_clock(resets_at)
 
             # Row 1: progress bar
             bar = Gtk.LevelBar()
