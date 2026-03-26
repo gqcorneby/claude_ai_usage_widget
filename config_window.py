@@ -33,7 +33,7 @@ class ConfigWindow(Gtk.Window):
         self.set_type_hint(Gdk.WindowTypeHint.DIALOG)
         self.set_keep_above(True)
         self._on_save_cb = on_save
-        self._rows: list[tuple[Gtk.Entry, Gtk.Entry]] = []
+        self._rows: list[tuple[Gtk.Entry, Gtk.Entry, Gtk.CheckButton]] = []
 
         self._apply_css()
 
@@ -87,7 +87,7 @@ class ConfigWindow(Gtk.Window):
 
         # Column headers
         hdr_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        for text, expand in [("Label", False), ("Credentials Directory", True)]:
+        for text, expand in [("Label", False), ("Credentials Directory", True), ("Hide tray", False)]:
             h = Gtk.Label(label=text)
             h.get_style_context().add_class("cfg-col-header")
             h.set_halign(Gtk.Align.START)
@@ -98,12 +98,13 @@ class ConfigWindow(Gtk.Window):
         box.pack_start(self._rows_box, False, False, 0)
 
         for acct in current_accounts:
-            self._add_row(acct.get("label", ""), acct.get("credentials_dir", ""))
+            self._add_row(acct.get("label", ""), acct.get("credentials_dir", ""),
+                          acct.get("hide_from_tray", False))
 
         add_btn = Gtk.Button(label="+ Add Account")
         add_btn.get_style_context().add_class("cfg-add-btn")
         add_btn.set_halign(Gtk.Align.START)
-        add_btn.connect("clicked", lambda _: self._add_row("", "~/.claude"))
+        add_btn.connect("clicked", lambda _: self._add_row("", "~/.claude", False))
         box.pack_start(add_btn, False, False, 4)
 
         return box
@@ -228,7 +229,7 @@ class ConfigWindow(Gtk.Window):
 
     # ── Account row helpers ───────────────────────────────────────────────────
 
-    def _add_row(self, label: str, cred_dir: str):
+    def _add_row(self, label: str, cred_dir: str, hide_from_tray: bool = False):
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
 
         label_entry = Gtk.Entry()
@@ -241,22 +242,27 @@ class ConfigWindow(Gtk.Window):
         dir_entry.set_text(cred_dir)
         dir_entry.set_placeholder_text("~/.claude")
 
+        hide_check = Gtk.CheckButton()
+        hide_check.set_active(hide_from_tray)
+        hide_check.set_tooltip_text("Hide this account from the tray label")
+
         remove_btn = Gtk.Button(label="✕")
         remove_btn.get_style_context().add_class("cfg-remove-btn")
         remove_btn.set_relief(Gtk.ReliefStyle.NONE)
 
         row.pack_start(label_entry, False, False, 0)
         row.pack_start(dir_entry, True, True, 0)
+        row.pack_start(hide_check, False, False, 0)
         row.pack_start(remove_btn, False, False, 0)
 
-        entry_pair = (label_entry, dir_entry)
-        self._rows.append(entry_pair)
+        entry_triple = (label_entry, dir_entry, hide_check)
+        self._rows.append(entry_triple)
         self._rows_box.pack_start(row, False, False, 0)
         row.show_all()
 
-        def on_remove(_btn, r=row, ep=entry_pair):
+        def on_remove(_btn, r=row, et=entry_triple):
             self._rows_box.remove(r)
-            self._rows.remove(ep)
+            self._rows.remove(et)
 
         remove_btn.connect("clicked", on_remove)
 
@@ -264,8 +270,12 @@ class ConfigWindow(Gtk.Window):
 
     def _on_save(self, _btn):
         accounts = [
-            {"label": le.get_text().strip(), "credentials_dir": de.get_text().strip()}
-            for le, de in self._rows
+            {
+                "label": le.get_text().strip(),
+                "credentials_dir": de.get_text().strip(),
+                "hide_from_tray": hc.get_active(),
+            }
+            for le, de, hc in self._rows
             if le.get_text().strip() and de.get_text().strip()
         ]
 

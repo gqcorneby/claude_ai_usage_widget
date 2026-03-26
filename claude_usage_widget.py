@@ -420,24 +420,27 @@ class ClaudeUsageApp:
                 # else: no cached data at all — leave as-is (will show !)
             self.account_states[label].update(result)
 
-        # Build tray label: "G:67% N:12%"
+        # Build tray label: "G:67% N:12%" — accounts with hide_from_tray are skipped
         label_parts = []
         max_pct = 0
         any_ok = False
 
         for acct in self.accounts:
             lbl = acct["label"]
+            hide = acct.get("hide_from_tray", False)
             state = self.account_states[lbl]
             usage = state.get("usage_data")
 
             if usage:
-                any_ok = True
                 five = usage.get("five_hour", {}) or {}
                 seven = usage.get("seven_day", {}) or {}
                 pct5, _ = parse_utilization(five.get("utilization", 0))
                 pct7, _ = parse_utilization(seven.get("utilization", 0))
-                label_parts.append(f"{lbl}:{pct5}%")
-                max_pct = max(max_pct, pct5, pct7)
+
+                if not hide:
+                    any_ok = True
+                    label_parts.append(f"{lbl}:{pct5}%")
+                    max_pct = max(max_pct, pct5, pct7)
 
                 r5 = format_reset_time(five.get("resets_at")) if self.auto_poll else format_reset_clock(five.get("resets_at"))
                 burn_rate = compute_burn_rate(seven)
@@ -448,7 +451,8 @@ class ClaudeUsageApp:
                     br_str = f"  \u21ba {r5}"
                 self.menu_items[lbl].set_label(f"{lbl}: {pct7}%{br_str}")
             else:
-                label_parts.append(f"{lbl}:?" if state.get("pending_reset") else f"{lbl}:!")
+                if not hide:
+                    label_parts.append(f"{lbl}:?" if state.get("pending_reset") else f"{lbl}:!")
                 if state.get("pending_reset"):
                     self.menu_items[lbl].set_label(f"{lbl}: waiting for new period data...")
                 else:

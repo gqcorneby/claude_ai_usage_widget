@@ -8,7 +8,7 @@ A lightweight system tray widget that shows your Claude AI subscription usage (5
 
 ## What's Different from the Original
 
-- **Multiple accounts** — tray label shows `Work:67% Personal:12%` for all accounts at a glance
+- **Multiple accounts** — tray label shows `Work:67% Personal:12%` for all accounts at a glance; individual accounts can be hidden from the tray while still appearing in the dropdown and popup
 - **Redesigned popup** — two-column table layout showing 5h and 7d side-by-side with inline reset times (`72% — 2h 15m`)
 - **Configure window** — edit accounts, thresholds, burn rate alerts, and poll interval live from the tray menu (no config file editing needed)
 - **Burn rate alerts** — warns when your 7d usage pace suggests you'll exceed your weekly allocation (e.g. 50% used with only 25% of the week elapsed)
@@ -111,7 +111,7 @@ State is persisted to `~/.config/claude-usage-widget/notification_state.json`, s
 
 The easiest way is via the tray menu → **Configure...**:
 
-- **Accounts tab** — add, edit, or remove accounts (label + credentials directory)
+- **Accounts tab** — add, edit, or remove accounts (label + credentials directory); check **Hide tray** on any account to exclude it from the tray label while keeping it in the dropdown and details popup
 - **Notifications tab** — toggle auto-refresh, set the poll interval, warn/critical thresholds, and burn rate alert
 
 Changes take effect immediately without restarting the widget.
@@ -122,7 +122,7 @@ The config is stored at `~/.config/claude-usage-widget/config.json` and can also
 {
   "accounts": [
     { "label": "Work",     "credentials_dir": "~/.claude/work" },
-    { "label": "Personal", "credentials_dir": "~/.claude" }
+    { "label": "Personal", "credentials_dir": "~/.claude", "hide_from_tray": true }
   ],
   "auto_poll": true,
   "poll_interval_seconds": 300,
