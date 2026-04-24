@@ -26,7 +26,7 @@ class ConfigWindow(Gtk.Window):
     def __init__(self, current_accounts: list[dict], thresholds: dict,
                  burn_rate_cfg: dict, poll_interval_secs: int, on_save):
         super().__init__(title="Configure")
-        self.set_default_size(480, -1)
+        self.set_default_size(540, -1)
         self.set_resizable(False)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.set_type_hint(Gdk.WindowTypeHint.DIALOG)
@@ -65,7 +65,6 @@ class ConfigWindow(Gtk.Window):
         cancel_btn = Gtk.Button(label="Cancel")
         cancel_btn.connect("clicked", lambda _: self.destroy())
         save_btn = Gtk.Button(label="Save & Refresh")
-        save_btn.get_style_context().add_class("cfg-save-btn")
         save_btn.connect("clicked", self._on_save)
         footer.pack_end(save_btn, False, False, 0)
         footer.pack_end(cancel_btn, False, False, 0)
@@ -85,8 +84,7 @@ class ConfigWindow(Gtk.Window):
 
         # Column headers
         hdr_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        for text, expand in [("Label", False), ("Credentials Directory", True),
-                              ("Hide tray", False), ("No poll", False)]:
+        for text, expand in [("Label", False), ("Credentials Directory", True)]:
             h = Gtk.Label(label=text)
             h.get_style_context().add_class("cfg-col-header")
             h.set_halign(Gtk.Align.START)
@@ -230,11 +228,11 @@ class ConfigWindow(Gtk.Window):
         dir_entry.set_text(cred_dir)
         dir_entry.set_placeholder_text("~/.claude")
 
-        hide_check = Gtk.CheckButton()
+        hide_check = Gtk.CheckButton(label="Hide tray")
         hide_check.set_active(hide_from_tray)
         hide_check.set_tooltip_text("Hide this account from the tray label")
 
-        disable_check = Gtk.CheckButton()
+        disable_check = Gtk.CheckButton(label="No poll")
         disable_check.set_active(disable_polling)
         disable_check.set_tooltip_text("Disable background auto-refresh for this account")
 
@@ -436,13 +434,14 @@ class ConfigWindow(Gtk.Window):
             .cfg-add-btn:hover { color: #c0c0ff; border-color: #6060aa; }
 
             .cfg-save-btn {
-                background-color: #2e2e5e;
-                color: #c0c0ff;
-                border: 1px solid #5050aa;
+                background-color: #4545b0;
+                color: #ffffff;
+                border: 1px solid #7575cc;
                 border-radius: 4px;
                 padding: 4px 16px;
+                font-weight: bold;
             }
-            .cfg-save-btn:hover { background-color: #4040aa; color: #e0e0ff; }
+            .cfg-save-btn:hover { background-color: #5a5acc; color: #ffffff; border-color: #9090dd; }
 
             /* Misc */
             separator, .cfg-sep { background-color: #2a2a4a; min-height: 1px; }

@@ -2,11 +2,13 @@
 
 > **Fork of [StaticB1/claude_ai_usage_widget](https://github.com/StaticB1/claude_ai_usage_widget)**
 
-A lightweight system tray widget that shows your Claude AI subscription usage (5h and 7d rate limit windows) directly in your Linux taskbar. Supports multiple accounts and is configurable via a built-in UI.
+A lightweight system tray widget that shows your Claude AI subscription usage (5h and 7d rate limit windows) directly in your Linux taskbar. Supports multiple accounts and is fully configurable via a built-in UI — no config file editing required.
 
-![Claude Usage Widget Screenshot](screenshot.png)
+| Tray menu | Details popup |
+|---|---|
+| ![Tray menu](screenshots/screenshot_tray.png) | ![Details popup](screenshots/screenshot_popup.png) |
 
-## What's Different from the Original
+## Features
 
 - **Multiple accounts** — tray label shows `Work:67% Personal:12%` for all accounts at a glance; individual accounts can be hidden from the tray while still appearing in the dropdown and popup
 - **Redesigned popup** — two-column table layout showing 5h and 7d side-by-side with inline reset times (`72% — 2h 15m`)
@@ -89,6 +91,8 @@ The tray gives you the quick hourly glance; the dropdown shows weekly pace at a 
 
 ### Notifications
 
+![Alert notification](screenshots/screenshot_alert.png)
+
 | Type | Triggers | Urgency |
 |---|---|---|
 | Usage threshold — warn | 5h or 7d hits warn % (default 60%) | Normal |
@@ -110,6 +114,10 @@ State is persisted to `~/.config/claude-usage-widget/notification_state.json`, s
 ## Configuration
 
 The easiest way is via the tray menu → **Configure...**:
+
+| Accounts tab | Notifications tab |
+|---|---|
+| ![Config accounts](screenshots/screenshot_config_accounts.png) | ![Config notifications](screenshots/screenshot_config_notifications.png) |
 
 - **Accounts tab** — add, edit, or remove accounts (label + credentials directory); check **Hide tray** to exclude an account from the tray label; check **No poll** to disable background auto-refresh for that account
 - **Notifications tab** — set the poll interval, warn/critical thresholds, and burn rate alert
