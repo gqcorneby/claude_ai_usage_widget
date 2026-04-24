@@ -240,6 +240,17 @@ def fetch_usage(token: str) -> dict | None:
         return None
 
 
+def _is_resets_at_future(resets_at_str: str | None) -> bool:
+    """Return True if the given resets_at timestamp is still in the future."""
+    if not resets_at_str:
+        return False
+    try:
+        resets_at = datetime.fromisoformat(resets_at_str.replace("Z", "+00:00"))
+        return datetime.now(timezone.utc) < resets_at
+    except Exception:
+        return False
+
+
 def _is_usage_stale(usage: dict) -> bool:
     """Return True if any usage window's resets_at has passed, meaning the period rolled over."""
     now = datetime.now(timezone.utc)
@@ -277,6 +288,7 @@ class ClaudeUsageApp:
             state["last_threshold_seven_resets_at"] = saved.get("last_threshold_seven_resets_at")
             state["last_burn_rate_resets_at"] = saved.get("last_burn_rate_resets_at")
             state["last_burn_rate_threshold"] = saved.get("last_burn_rate_threshold", 0)
+            state["last_seven_resets_at"] = saved.get("last_seven_resets_at")
             self.account_states[acct["label"]] = state
 
         self.last_updated = "never"
@@ -407,9 +419,15 @@ class ClaudeUsageApp:
         self._loading = False  # stop spinner; _tick_loading_icon will not reschedule
         self.last_updated = datetime.now().strftime("%H:%M:%S")
 
+        persist_needed = False
         for label, result in results.items():
             if result.get("usage_data"):
                 result["pending_reset"] = False
+                seven = result["usage_data"].get("seven_day") or {}
+                new_resets_at = seven.get("resets_at")
+                if new_resets_at and new_resets_at != self.account_states[label].get("last_seven_resets_at"):
+                    result["last_seven_resets_at"] = new_resets_at
+                    persist_needed = True
             else:
                 cached = self.account_states[label].get("usage_data")
                 if cached and _is_usage_stale(cached):
@@ -419,8 +437,11 @@ class ClaudeUsageApp:
                 elif cached:
                     # Still within the window, preserve last known values
                     result = {k: v for k, v in result.items() if k != "usage_data"}
-                # else: no cached data at all — leave as-is (will show !)
+                # else: no cached data at all — leave as-is (will show ! or ? if 7d still active)
             self.account_states[label].update(result)
+
+        if persist_needed:
+            self._persist_notification_state()
 
         # Build tray label: "G:67% N:12%" — accounts with hide_from_tray are skipped
         label_parts = []
@@ -453,10 +474,18 @@ class ClaudeUsageApp:
                     br_str = f"  \u21ba {r5}"
                 self.menu_items[lbl].set_label(f"{lbl}: {pct7}%{br_str}")
             else:
+                seven_resets_at = state.get("last_seven_resets_at")
+                seven_active = _is_resets_at_future(seven_resets_at)
                 if not hide:
-                    label_parts.append(f"{lbl}:?" if state.get("pending_reset") else f"{lbl}:!")
+                    if state.get("pending_reset") or seven_active:
+                        label_parts.append(f"{lbl}:?")
+                    else:
+                        label_parts.append(f"{lbl}:!")
                 if state.get("pending_reset"):
                     self.menu_items[lbl].set_label(f"{lbl}: waiting for new period data...")
+                elif seven_active:
+                    reset_str = format_reset_time(seven_resets_at)
+                    self.menu_items[lbl].set_label(f"{lbl}: ?  \u21ba {reset_str}")
                 else:
                     self.menu_items[lbl].set_label(f"{lbl}: {state.get('error', 'error')}")
 
@@ -560,6 +589,7 @@ class ClaudeUsageApp:
             "last_threshold_seven_resets_at": None, # 7d window resets_at seen last poll
             "last_burn_rate_resets_at": None,       # resets_at value of the current window
             "last_burn_rate_threshold": 0,          # highest usage % level already notified (0/warn/critical)
+            "last_seven_resets_at": None,           # last known 7d resets_at, persisted across restarts
         }
 
     def _persist_notification_state(self):
@@ -576,6 +606,7 @@ class ClaudeUsageApp:
                 "last_threshold_seven_resets_at": s.get("last_threshold_seven_resets_at"),
                 "last_burn_rate_resets_at": s.get("last_burn_rate_resets_at"),
                 "last_burn_rate_threshold": s.get("last_burn_rate_threshold", 0),
+                "last_seven_resets_at": s.get("last_seven_resets_at"),
             }
             for lbl, s in self.account_states.items()
         }
@@ -601,6 +632,7 @@ class ClaudeUsageApp:
             state["last_threshold_seven_resets_at"] = saved.get("last_threshold_seven_resets_at")
             state["last_burn_rate_resets_at"] = saved.get("last_burn_rate_resets_at")
             state["last_burn_rate_threshold"] = saved.get("last_burn_rate_threshold", 0)
+            state["last_seven_resets_at"] = saved.get("last_seven_resets_at")
             self.account_states[acct["label"]] = state
         self._build_menu()
         self.force_refresh()
