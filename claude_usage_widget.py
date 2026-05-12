@@ -30,12 +30,13 @@ import urllib.error
 import ssl
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from shared import (
     COLOR_GRAY, DEFAULT_THRESHOLDS, get_color_for_pct, hex_to_rgb,
     parse_utilization, format_reset_time, format_reset_clock, compute_burn_rate,
+    load_local_usage, load_transcript_tokens, fmt_tokens,
 )
 from usage_popup import UsageDetailWindow
 from config_window import ConfigWindow
@@ -370,6 +371,15 @@ class ClaudeUsageApp:
 
     def _fetch_account(self, label: str, state: dict) -> dict:
         """Fetch usage for a single account. Returns update dict."""
+        acct_cfg = next((a for a in self.accounts if a["label"] == label), {})
+        if acct_cfg.get("source") == "local_tracking":
+            profile = acct_cfg.get("tracking_profile", label.lower())
+            local = load_local_usage(profile)
+            return {"error": None if local is not None else "No tracking data",
+                    "local_usage": local, "usage_data": None}
+
+        paired_profile = acct_cfg.get("paired_local_profile")
+
         cred_dir = state["credentials_dir"]
         try:
             token = load_token(cred_dir)
@@ -380,8 +390,26 @@ class ClaudeUsageApp:
             if data is None:
                 return {"error": "API error", "usage_data": None, "token": token,
                         "subscription_info": sub_info}
-            return {"error": None, "usage_data": data, "token": token,
-                    "subscription_info": sub_info}
+            result = {"error": None, "usage_data": data, "token": token,
+                      "subscription_info": sub_info}
+            if paired_profile:
+                n_projects  = str(Path(cred_dir).expanduser() / "projects")
+                paired_name = acct_cfg.get("paired_local_name") or paired_profile.upper()
+                # Align local 5h window to the API's reset boundary
+                five_hour_start = None
+                resets_at_str = (data.get("five_hour") or {}).get("resets_at")
+                if resets_at_str:
+                    try:
+                        resets_at = datetime.fromisoformat(resets_at_str.replace("Z", "+00:00"))
+                        five_hour_start = resets_at - timedelta(hours=5)
+                    except Exception:
+                        pass
+                result["paired_tokens"] = {
+                    "local":   {"name": paired_name, "data": load_local_usage(paired_profile, five_hour_start)},
+                    "primary": {"name": label,       "data": load_transcript_tokens(n_projects, five_hour_start)},
+                    "work_threshold": acct_cfg.get("work_threshold", 100),
+                }
+            return result
         except RateLimitError:
             print(f"[claude-usage] {label}: rate limited", file=sys.stderr)
             return {"error": "Rate limited", "usage_data": None, "token": state.get("token")}
@@ -453,8 +481,19 @@ class ClaudeUsageApp:
             hide = acct.get("hide_from_tray", False)
             state = self.account_states[lbl]
             usage = state.get("usage_data")
+            local = state.get("local_usage")
 
-            if usage:
+            if local is not None:
+                # Local tracking account \u2014 show token counts
+                week_total = local["week"]["total"]
+                today_total = local["today"]["total"]
+                if not hide:
+                    any_ok = True
+                    label_parts.append(f"{lbl}:{fmt_tokens(week_total)}/wk")
+                self.menu_items[lbl].set_label(
+                    f"{lbl}: {fmt_tokens(today_total)} today  /  {fmt_tokens(week_total)} this week"
+                )
+            elif usage:
                 five = usage.get("five_hour", {}) or {}
                 seven = usage.get("seven_day", {}) or {}
                 pct5, _ = parse_utilization(five.get("utilization", 0))
@@ -462,7 +501,22 @@ class ClaudeUsageApp:
 
                 if not hide:
                     any_ok = True
-                    label_parts.append(f"{lbl}:{pct5}%")
+                    paired = state.get("paired_tokens")
+                    if paired:
+                        local_data   = (paired.get("local") or {}).get("data") or {}
+                        primary_data = (paired.get("primary") or {}).get("data") or {}
+                        local_name   = (paired.get("local") or {}).get("name", "W")
+                        local_5h     = local_data.get("five_hour", {}).get("total", 0)
+                        primary_5h   = primary_data.get("five_hour", {}).get("total", 0)
+                        grand        = max(local_5h + primary_5h, 1)
+                        est_fraction = local_5h / grand
+                        # Scale by N's API % to get EST as % of 5h limit (stable when N adds sessions)
+                        est_abs      = est_fraction * pct5
+                        threshold    = max(paired.get("work_threshold", 100), 1) / 100
+                        work_pct     = int(est_abs / threshold)
+                        label_parts.append(f"{lbl}:{pct5}% {local_name}:{work_pct}%")
+                    else:
+                        label_parts.append(f"{lbl}:{pct5}%")
                     max_pct = max(max_pct, pct5, pct7)
 
                 r5 = format_reset_clock(five.get("resets_at")) if acct.get("disable_polling", False) else format_reset_time(five.get("resets_at"))
@@ -582,7 +636,7 @@ class ClaudeUsageApp:
     def _blank_state(credentials_dir: str) -> dict:
         return {
             "credentials_dir": credentials_dir,
-            "token": None, "usage_data": None, "pending_reset": False,
+            "token": None, "usage_data": None, "local_usage": None, "paired_tokens": None, "pending_reset": False,
             "subscription_info": None, "error": None,
             "last_notification_threshold": 0,       # highest level already notified this window
             "last_threshold_five_resets_at": None,  # 5h window resets_at seen last poll
@@ -712,6 +766,8 @@ class ClaudeUsageApp:
             accts_data.append({
                 "label": lbl,
                 "usage_data": state.get("usage_data"),
+                "local_usage": state.get("local_usage"),
+                "paired_tokens": state.get("paired_tokens"),
                 "error": state.get("error"),
                 "subscription_info": state.get("subscription_info"),
                 "disable_polling": acct.get("disable_polling", False),

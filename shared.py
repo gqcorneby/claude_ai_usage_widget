@@ -1,9 +1,13 @@
 """
 Shared utilities for Claude Usage Widget.
-Colors, utilization parsing, and time formatting.
+Colors, utilization parsing, time formatting, and local token tracking.
 """
 
-from datetime import datetime, timezone
+import json
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+LOCAL_TRACKING_FILE = Path.home() / ".claude" / "usage-tracking.json"
 
 # ── Colors ──────────────────────────────────────────────────────────────────
 
@@ -79,6 +83,165 @@ def format_reset_clock_7d(iso_str: str | None) -> str:
         return f"{day} {time_str}"
     except Exception:
         return "unknown"
+
+
+def fmt_tokens(n: int) -> str:
+    """Abbreviate a token count: 87K, 1.2M."""
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.0f}K"
+    return str(n)
+
+
+def load_local_usage(profile: str, five_hour_start: datetime | None = None) -> dict | None:
+    """Aggregate token usage from the local tracking file for a profile."""
+    if not LOCAL_TRACKING_FILE.exists():
+        return None
+    try:
+        data = json.loads(LOCAL_TRACKING_FILE.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+
+    now = datetime.now(timezone.utc)
+    five_hour_start = five_hour_start or (now - timedelta(hours=5))
+    today_start     = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start      = now - timedelta(days=7)
+    month_start     = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    buckets = {
+        "five_hour": [0, 0, 0],   # [input, output, cache]
+        "today":     [0, 0, 0],
+        "week":      [0, 0, 0],
+        "month":     [0, 0, 0],
+        "all":       [0, 0, 0],
+    }
+
+    for s in data.get("sessions", []):
+        if s.get("profile") != profile:
+            continue
+        inp   = s.get("input_tokens", 0)
+        out   = s.get("output_tokens", 0)
+        cache = s.get("cache_read_input_tokens", 0) + s.get("cache_creation_input_tokens", 0)
+
+        buckets["all"][0] += inp
+        buckets["all"][1] += out
+        buckets["all"][2] += cache
+
+        ts_str = s.get("timestamp", "")
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+            if ts >= month_start:
+                buckets["month"][0] += inp
+                buckets["month"][1] += out
+                buckets["month"][2] += cache
+            if ts >= week_start:
+                buckets["week"][0] += inp
+                buckets["week"][1] += out
+                buckets["week"][2] += cache
+            if ts >= today_start:
+                buckets["today"][0] += inp
+                buckets["today"][1] += out
+                buckets["today"][2] += cache
+            if ts >= five_hour_start:
+                buckets["five_hour"][0] += inp
+                buckets["five_hour"][1] += out
+                buckets["five_hour"][2] += cache
+        except Exception:
+            pass
+
+    def _make(vals: list) -> dict:
+        inp, out, cache = vals
+        return {"input": inp, "output": out, "cache": cache, "total": inp + out + cache}
+
+    return {
+        "five_hour": _make(buckets["five_hour"]),
+        "today":     _make(buckets["today"]),
+        "week":      _make(buckets["week"]),
+        "month":     _make(buckets["month"]),
+        "all":       _make(buckets["all"]),
+    }
+
+
+def load_transcript_tokens(projects_dir: str, five_hour_start: datetime | None = None) -> dict | None:
+    """Scan CC transcript JSONL files and aggregate token usage by time window."""
+    base = Path(projects_dir).expanduser()
+    if not base.exists():
+        return None
+
+    now = datetime.now(timezone.utc)
+    five_hour_start = five_hour_start or (now - timedelta(hours=5))
+    today_start     = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start      = now - timedelta(days=7)
+    month_start     = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    buckets = {
+        "five_hour": [0, 0, 0],
+        "today":     [0, 0, 0],
+        "week":      [0, 0, 0],
+        "month":     [0, 0, 0],
+        "all":       [0, 0, 0],
+    }
+
+    for jsonl_file in base.rglob("*.jsonl"):
+        try:
+            with open(jsonl_file, encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        msg = json.loads(line)
+                        if msg.get("type") != "assistant":
+                            continue
+                        usage = msg.get("message", {}).get("usage")
+                        if not usage:
+                            continue
+                        inp   = usage.get("input_tokens", 0)
+                        out   = usage.get("output_tokens", 0)
+                        cache = usage.get("cache_read_input_tokens", 0) + usage.get("cache_creation_input_tokens", 0)
+
+                        buckets["all"][0] += inp
+                        buckets["all"][1] += out
+                        buckets["all"][2] += cache
+
+                        ts_str = msg.get("timestamp", "")
+                        try:
+                            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                            if ts >= month_start:
+                                buckets["month"][0] += inp
+                                buckets["month"][1] += out
+                                buckets["month"][2] += cache
+                            if ts >= week_start:
+                                buckets["week"][0] += inp
+                                buckets["week"][1] += out
+                                buckets["week"][2] += cache
+                            if ts >= today_start:
+                                buckets["today"][0] += inp
+                                buckets["today"][1] += out
+                                buckets["today"][2] += cache
+                            if ts >= five_hour_start:
+                                buckets["five_hour"][0] += inp
+                                buckets["five_hour"][1] += out
+                                buckets["five_hour"][2] += cache
+                        except Exception:
+                            pass
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+        except OSError:
+            pass
+
+    def _make(vals: list) -> dict:
+        inp, out, cache = vals
+        return {"input": inp, "output": out, "cache": cache, "total": inp + out + cache}
+
+    return {
+        "five_hour": _make(buckets["five_hour"]),
+        "today":     _make(buckets["today"]),
+        "week":      _make(buckets["week"]),
+        "month":     _make(buckets["month"]),
+        "all":       _make(buckets["all"]),
+    }
 
 
 def format_reset_time(iso_str: str | None) -> str:

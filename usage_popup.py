@@ -8,7 +8,7 @@ gi.require_version('Gtk', '3.0')
 
 from gi.repository import Gtk, Gdk
 
-from shared import get_color_for_pct, parse_utilization, format_reset_time, format_reset_clock, format_reset_clock_7d, compute_burn_rate
+from shared import get_color_for_pct, parse_utilization, format_reset_time, format_reset_clock, format_reset_clock_7d, compute_burn_rate, fmt_tokens
 
 
 class UsageDetailWindow(Gtk.Window):
@@ -126,6 +126,11 @@ class UsageDetailWindow(Gtk.Window):
             sub_lbl.set_halign(Gtk.Align.START)
             vbox.pack_start(sub_lbl, False, False, 0)
 
+        local = acct.get("local_usage")
+        if local is not None:
+            self._add_local_usage_grid(vbox, local)
+            return
+
         if not usage:
             if not error:
                 err_lbl = Gtk.Label(label="No data available")
@@ -211,5 +216,116 @@ class UsageDetailWindow(Gtk.Window):
                     )
                     pace_lbl.set_halign(Gtk.Align.CENTER)
                     grid.attach(pace_lbl, col, 3, 1, 1)
+
+        vbox.pack_start(grid, False, False, 4)
+
+        paired = acct.get("paired_tokens")
+        if paired:
+            self._add_paired_section(vbox, paired)
+
+    def _add_paired_section(self, vbox: Gtk.Box, paired: dict):
+        """Render paired profile token split below the API usage section."""
+        local_name   = paired.get("local", {}).get("name", "Local")
+        primary_name = paired.get("primary", {}).get("name", "Primary")
+        local_data   = paired.get("local", {}).get("data") or {}
+        primary_data = paired.get("primary", {}).get("data") or {}
+
+        sep = Gtk.Separator()
+        sep.get_style_context().add_class("separator")
+        vbox.pack_start(sep, False, False, 6)
+
+        hdr = Gtk.Label(label=f"{local_name}  VS  {primary_name}")
+        hdr.get_style_context().add_class("section-label")
+        hdr.set_halign(Gtk.Align.START)
+        vbox.pack_start(hdr, False, False, 2)
+
+        COLORS  = ["#a855f7", "#22c55e"]
+        windows = [("today", "Today"), ("week", "7 days"), ("month", "Month")]
+        rows    = [(local_name, local_data, COLORS[0]), (primary_name, primary_data, COLORS[1])]
+
+        grid = Gtk.Grid()
+        grid.set_column_spacing(16)
+        grid.set_row_spacing(3)
+
+        for c, (_, wlabel) in enumerate(windows):
+            lbl = Gtk.Label(label=wlabel)
+            lbl.get_style_context().add_class("col-header")
+            lbl.set_halign(Gtk.Align.CENTER)
+            lbl.set_hexpand(True)
+            grid.attach(lbl, c + 1, 0, 1, 1)
+
+        for row_idx, (name, data, color) in enumerate(rows):
+            base_row = 1 + row_idx * 2
+
+            name_lbl = Gtk.Label()
+            name_lbl.set_markup(f'<span foreground="{color}" font_weight="bold" font="12">{name}</span>')
+            name_lbl.set_halign(Gtk.Align.END)
+            name_lbl.set_valign(Gtk.Align.CENTER)
+            grid.attach(name_lbl, 0, base_row, 1, 2)
+
+            for c, (win_key, _) in enumerate(windows):
+                local_total   = local_data.get(win_key, {}).get("total", 0)
+                primary_total = primary_data.get(win_key, {}).get("total", 0)
+                grand         = max(local_total + primary_total, 1)
+                this_total    = data.get(win_key, {}).get("total", 0)
+                fraction      = this_total / grand
+
+                bar = Gtk.LevelBar()
+                bar.set_min_value(0)
+                bar.set_max_value(1.0)
+                bar.set_value(fraction)
+                bar.set_size_request(-1, 7)
+                bar.remove_offset_value("low")
+                bar.remove_offset_value("high")
+                bar.remove_offset_value("full")
+                bar_css = Gtk.CssProvider()
+                bar_css.load_from_data(f"""
+                    levelbar trough {{ background-color: #2a2a4a; border-radius: 3px; min-height: 7px; }}
+                    levelbar trough block.filled {{ background-color: {color}; border-radius: 3px; min-height: 7px; }}
+                """.encode())
+                bar.set_hexpand(True)
+                bar.get_style_context().add_provider(bar_css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+                grid.attach(bar, c + 1, base_row, 1, 1)
+
+                val = Gtk.Label()
+                val.set_markup(
+                    f'<span foreground="{color}">{int(fraction * 100)}%</span>'
+                    f'<span foreground="#555577" font="10"> {fmt_tokens(this_total)}</span>'
+                )
+                val.set_halign(Gtk.Align.CENTER)
+                val.set_hexpand(True)
+                grid.attach(val, c + 1, base_row + 1, 1, 1)
+
+        vbox.pack_start(grid, False, False, 4)
+
+    def _add_local_usage_grid(self, vbox: Gtk.Box, local: dict):
+        """Render token counts for a local-tracking account (no API utilization %)."""
+        grid = Gtk.Grid()
+        grid.set_column_spacing(24)
+        grid.set_row_spacing(4)
+        grid.set_column_homogeneous(True)
+
+        for col, (key, window_label) in enumerate([("today", "Today"), ("week", "7 days"), ("all", "All time")]):
+            bucket = local.get(key, {})
+            total  = bucket.get("total", 0)
+            inp    = bucket.get("input", 0)
+            out    = bucket.get("output", 0)
+
+            hdr = Gtk.Label(label=window_label)
+            hdr.get_style_context().add_class("col-header")
+            hdr.set_halign(Gtk.Align.CENTER)
+            grid.attach(hdr, col, 0, 1, 1)
+
+            val = Gtk.Label()
+            val.set_markup(
+                f'<span foreground="#a0a0ff" font_weight="bold" font="18">{fmt_tokens(total)}</span>'
+            )
+            val.set_halign(Gtk.Align.CENTER)
+            grid.attach(val, col, 1, 1, 1)
+
+            detail = Gtk.Label(label=f"in {fmt_tokens(inp)}  out {fmt_tokens(out)}")
+            detail.get_style_context().add_class("metric-sub")
+            detail.set_halign(Gtk.Align.CENTER)
+            grid.attach(detail, col, 2, 1, 1)
 
         vbox.pack_start(grid, False, False, 4)

@@ -32,7 +32,8 @@ class ConfigWindow(Gtk.Window):
         self.set_type_hint(Gdk.WindowTypeHint.DIALOG)
         self.set_keep_above(True)
         self._on_save_cb = on_save
-        self._rows: list[tuple[Gtk.Entry, Gtk.Entry, Gtk.CheckButton, Gtk.CheckButton]] = []
+        self._rows: list[tuple[Gtk.Entry, Gtk.Entry, Gtk.CheckButton, Gtk.CheckButton, Gtk.CheckButton, Gtk.Entry, Gtk.Entry, Gtk.SpinButton]] = []
+        self._row_extras: list[dict] = []  # unknown fields to preserve on save
 
         self._apply_css()
 
@@ -94,14 +95,17 @@ class ConfigWindow(Gtk.Window):
         self._rows_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         box.pack_start(self._rows_box, False, False, 0)
 
+        _known = {"label", "credentials_dir", "hide_from_tray", "disable_polling", "source", "tracking_profile"}
         for acct in current_accounts:
+            extras = {k: v for k, v in acct.items() if k not in _known}
             self._add_row(acct.get("label", ""), acct.get("credentials_dir", ""),
-                          acct.get("hide_from_tray", False), acct.get("disable_polling", False))
+                          acct.get("hide_from_tray", False), acct.get("disable_polling", False),
+                          acct.get("source") == "local_tracking", extras)
 
         add_btn = Gtk.Button(label="+ Add Account")
         add_btn.get_style_context().add_class("cfg-add-btn")
         add_btn.set_halign(Gtk.Align.START)
-        add_btn.connect("clicked", lambda _: self._add_row("", "~/.claude", False, False))
+        add_btn.connect("clicked", lambda _: self._add_row("", "~/.claude", False, False, False, None))
         box.pack_start(add_btn, False, False, 4)
 
         return box
@@ -215,7 +219,8 @@ class ConfigWindow(Gtk.Window):
     # ── Account row helpers ───────────────────────────────────────────────────
 
     def _add_row(self, label: str, cred_dir: str,
-                hide_from_tray: bool = False, disable_polling: bool = False):
+                hide_from_tray: bool = False, disable_polling: bool = False,
+                local_tracking: bool = False, extras: dict | None = None):
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
 
         label_entry = Gtk.Entry()
@@ -236,6 +241,10 @@ class ConfigWindow(Gtk.Window):
         disable_check.set_active(disable_polling)
         disable_check.set_tooltip_text("Disable background auto-refresh for this account")
 
+        local_check = Gtk.CheckButton(label="Local")
+        local_check.set_active(local_tracking)
+        local_check.set_tooltip_text("Read token usage from local tracking file instead of polling the API")
+
         remove_btn = Gtk.Button(label="✕")
         remove_btn.get_style_context().add_class("cfg-remove-btn")
         remove_btn.set_relief(Gtk.ReliefStyle.NONE)
@@ -244,32 +253,99 @@ class ConfigWindow(Gtk.Window):
         row.pack_start(dir_entry, True, True, 0)
         row.pack_start(hide_check, False, False, 0)
         row.pack_start(disable_check, False, False, 0)
+        row.pack_start(local_check, False, False, 0)
         row.pack_start(remove_btn, False, False, 0)
 
-        entry_quad = (label_entry, dir_entry, hide_check, disable_check)
-        self._rows.append(entry_quad)
-        self._rows_box.pack_start(row, False, False, 0)
-        row.show_all()
+        # Secondary row: pair fields (only shown when not a local-tracking account)
+        pair_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        pair_row.set_margin_start(4)
+        pair_lbl = Gtk.Label()
+        pair_lbl.set_markup('<span foreground="#6060aa" font="10">↔ pair  profile key:</span>')
+        pair_entry = Gtk.Entry()
+        pair_entry.set_text((extras or {}).get("paired_local_profile", ""))
+        pair_entry.set_width_chars(8)
+        pair_entry.set_placeholder_text("e.g. est")
+        pair_name_lbl = Gtk.Label()
+        pair_name_lbl.set_markup('<span foreground="#6060aa" font="10">display name:</span>')
+        pair_name_entry = Gtk.Entry()
+        pair_name_entry.set_text((extras or {}).get("paired_local_name", ""))
+        pair_name_entry.set_width_chars(8)
+        pair_name_entry.set_placeholder_text("e.g. EST")
+        pair_thresh_lbl = Gtk.Label()
+        pair_thresh_lbl.set_markup('<span foreground="#6060aa" font="10">work budget %:</span>')
+        pair_thresh_spin = Gtk.SpinButton.new_with_range(1, 100, 1)
+        pair_thresh_spin.set_value((extras or {}).get("work_threshold", 100))
+        pair_thresh_spin.set_tooltip_text("Max % of combined 5h tokens allocated to work (100 = no limit)")
+        pair_row.pack_start(pair_lbl, False, False, 0)
+        pair_row.pack_start(pair_entry, False, False, 0)
+        pair_row.pack_start(pair_name_lbl, False, False, 0)
+        pair_row.pack_start(pair_name_entry, False, False, 0)
+        pair_row.pack_start(pair_thresh_lbl, False, False, 0)
+        pair_row.pack_start(pair_thresh_spin, False, False, 0)
 
-        def on_remove(_btn, r=row, eq=entry_quad):
-            self._rows_box.remove(r)
+        # Hide pair row when Local tracking is checked (local accounts don't pair)
+        def _sync_pair_row(btn):
+            pair_row.set_sensitive(not btn.get_active())
+        local_check.connect("toggled", _sync_pair_row)
+        _sync_pair_row(local_check)
+
+        wrapper = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        wrapper.pack_start(row, False, False, 0)
+        wrapper.pack_start(pair_row, False, False, 0)
+
+        entry_quint = (label_entry, dir_entry, hide_check, disable_check, local_check, pair_entry, pair_name_entry, pair_thresh_spin)
+        self._rows.append(entry_quint)
+        _pair_keys = {"paired_local_profile", "paired_local_name", "work_threshold"}
+        self._row_extras.append({k: v for k, v in (extras or {}).items() if k not in _pair_keys})
+        self._rows_box.pack_start(wrapper, False, False, 0)
+        wrapper.show_all()
+
+        def on_remove(_btn, w=wrapper, eq=entry_quint):
+            self._rows_box.remove(w)
+            idx = self._rows.index(eq)
             self._rows.remove(eq)
+            self._row_extras.pop(idx)
+
 
         remove_btn.connect("clicked", on_remove)
 
     # ── Save ──────────────────────────────────────────────────────────────────
 
     def _on_save(self, _btn):
-        accounts = [
-            {
-                "label": le.get_text().strip(),
-                "credentials_dir": de.get_text().strip(),
+        accounts = []
+        for (le, de, hc, dc, lc, pe, pne, pts), extras in zip(self._rows, self._row_extras):
+            lbl = le.get_text().strip()
+            cdir = de.get_text().strip()
+            if not lbl or not cdir:
+                continue
+            acct = {
+                **extras,
+                "label": lbl,
+                "credentials_dir": cdir,
                 "hide_from_tray": hc.get_active(),
-                "disable_polling": dc.get_active(),
+                "disable_polling": dc.get_active() or lc.get_active(),
             }
-            for le, de, hc, dc in self._rows
-            if le.get_text().strip() and de.get_text().strip()
-        ]
+            if lc.get_active():
+                acct["source"] = "local_tracking"
+                acct["tracking_profile"] = lbl.lower()
+                acct.pop("paired_local_profile", None)
+            else:
+                acct.pop("source", None)
+                acct.pop("tracking_profile", None)
+                paired_val = pe.get_text().strip().lower()
+                paired_name = pne.get_text().strip()
+                if paired_val:
+                    acct["paired_local_profile"] = paired_val
+                    if paired_name:
+                        acct["paired_local_name"] = paired_name
+                    else:
+                        acct.pop("paired_local_name", None)
+                    acct["work_threshold"] = int(pts.get_value())
+                else:
+                    acct.pop("paired_local_profile", None)
+                    acct.pop("paired_local_name", None)
+                    acct.pop("work_threshold", None)
+            accounts.append(acct)
 
         if not accounts:
             dlg = Gtk.MessageDialog(
